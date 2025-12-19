@@ -10,12 +10,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/bet <amount>` - Play Mines (e.g. /bet 100)\n"
         "`/balance` - Check Paisa\n\n"
         
+        "🏦 **BANKING (Safe Zone):**\n"
+        "`/bank` - Check Bank Balance & Loan\n"
+        "`/deposit <amount>` - Bank me daalo (Safe from Rob)\n"
+        "`/withdraw <amount>` - Bank se nikalo\n"
+        "`/loan <amount>` - Bank se Udhaar lo\n"
+        "`/payloan <amount>` - Udhaar wapis karo\n\n"
+        
         "🔫 **CRIME & ECONOMY:**\n"
         "`/pay <amount>` - Paise bhejo (Reply to user)\n"
-        "`/rob` - Chori karo (Reply to user)\n"
+        "`/rob` - Chori karo (Sirf Wallet se)\n"
         "`/kill` - Supari do (Reply to user)\n"
         "`/protect` - Buy Shield (24 Hours)\n"
-        "`/alive` - Check Shield & Status\n\n"
+        "`/alive` - Check Shield & Dead Status\n\n"
         
         "📈 **MARKET:**\n"
         "`/ranking` - Top Groups\n"
