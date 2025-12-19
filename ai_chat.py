@@ -3,7 +3,7 @@ from config import OWNER_NAME
 from database import get_all_keys
 import random
 
-# Global Index
+# Global Index to track rotation
 current_key_index = 0
 
 def get_next_key(keys_list):
@@ -20,33 +20,36 @@ def get_yuki_response(user_text, user_name):
     available_keys = get_all_keys()
     
     if not available_keys:
-        return "Arre boss ne API Key nahi daali! (No Keys in DB)"
+        return "Arre boss ne abhi tak API Key nahi daali! (No Keys in DB)"
 
-    # SYSTEM PROMPT (Yuki Persona)
+    # SYSTEM PROMPT (Yuki Persona - Updated)
     system_instruction = (
-        f"Tera naam Yuki hai. Tu 17 saal ki ladki hai, Delhi se. "
-        f"Tu hobby classes (Dance/Art) jati hai. "
-        f"Tera owner {OWNER_NAME} hai. "
+        f"Tera naam Yuki hai. Tu 17 saal ki Delhi wali ladki hai. "
+        f"Tu abhi Class 12th me padhti hai (Board exams ka stress hai thoda). "
+        f"Hobbies: Tujhe Gaming ka pagalpan hai (Free Fire, PUBG/BGMI, COD). "
+        f"Tera owner {OWNER_NAME} hai, wo tera creator hai. "
         f"User ka naam {user_name} hai. "
-        f"Reply style: Hinglish, Delhi slang, thoda attitude but cute. "
-        f"IMPORTANT: Reply sirf 1 line ka hona chahiye. "
-        f"Current Topic: {user_text}"
+        f"Reply style: Hinglish, Delhi slang (yaar, bhai, scene, op), thoda Gamer attitude. "
+        f"Agar koi game ki baat kare toh full excited hoke bolna. "
+        f"IMPORTANT: Reply sirf 1 line ka hona chahiye. Short and crisp."
     )
 
     # 2. Retry Logic (Keys Rotate karega)
-    # Loop max utni baar chalega jitni keys hain
     for _ in range(len(available_keys)):
         try:
             # Current Key uthao
+            # Safety check: Index range se bahar na jaye
+            if current_key_index >= len(available_keys): current_key_index = 0
+            
             api_key = available_keys[current_key_index]
             genai.configure(api_key=api_key)
             
-            # 🔥 USE GEMINI 1.5 FLASH (Fastest Model)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            # 🔥 Note: 'gemini-2.5' abhi public nahi hai, isliye 1.5-flash use kar rahe hain
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            response = model.generate_content(system_instruction)
+            # Chat Generation
+            response = model.generate_content(f"{system_instruction}\n\nUser: {user_text}\nYuki:")
             
-            # Agar empty response aye toh skip
             if not response.text: raise Exception("Empty Response")
             
             return response.text.strip()
@@ -57,5 +60,5 @@ def get_yuki_response(user_text, user_name):
             get_next_key(available_keys)
             continue
 
-    return "Yaar sar dard ho raha hai... baad me ana. (All Keys Quota Exceeded)"
-  
+    return "Yaar server lag kar raha hai... baad me aana. (All Keys Quota Exceeded)"
+    
