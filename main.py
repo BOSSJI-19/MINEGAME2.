@@ -1,0 +1,199 @@
+import random
+from threading import Thread
+from flask import Flask
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+
+# IMPORTS
+from config import TELEGRAM_TOKEN, GRID_SIZE, DELETE_TIMER
+from database import users_col, codes_col, get_user, update_balance, get_balance, check_registered, register_user, update_group_activity
+import admin, start, help, group, leaderboard
+
+# SERVER
+app = Flask('')
+@app.route('/')
+def home(): return "Bot OK"
+def run(): app.run(host='0.0.0.0', port=8080)
+def keep_alive(): t = Thread(target=run); t.start()
+
+# VARS
+active_games = {} 
+SHOP_ITEMS = {
+    "vip":   {"name": "👑 VIP", "price": 10000},
+    "god":   {"name": "⚡ God", "price": 50000},
+    "rich":  {"name": "💸 Rich", "price": 100000}
+}
+BOMB_CONFIG = {
+    1:  [1.01, 1.08, 1.15, 1.25, 1.40, 1.55, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0], 
+    3:  [1.10, 1.25, 1.45, 1.75, 2.15, 2.65, 3.30, 4.2, 5.5, 7.5, 10.0, 15.0], 
+    5:  [1.30, 1.65, 2.20, 3.00, 4.20, 6.00, 9.00, 14.0, 22.0, 35.0, 50.0],    
+    10: [2.50, 4.50, 9.00, 18.0, 40.0, 80.0]                                   
+}
+
+# --- FUNCTIONS ---
+async def delete_job(context):
+    try: await context.bot.delete_message(context.job.chat_id, context.job.data)
+    except: pass
+
+async def ensure_registered(update, context):
+    user = update.effective_user
+    if not check_registered(user.id):
+        kb = [[InlineKeyboardButton("📝 Register", callback_data=f"reg_start_{user.id}")]]
+        await update.message.reply_text(f"🛑 **Register First!**\nGet ₹500 Bonus.", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        return False
+    return True
+
+# --- HANDLERS ---
+async def bet_menu(update, context):
+    if not await ensure_registered(update, context): return
+    try: await update.message.delete()
+    except: pass
+    
+    try: bet = int(context.args[0])
+    except: return await update.message.reply_text("⚠️ Use: `/bet 100`")
+    
+    uid = update.effective_user.id
+    if get_balance(uid) < bet: return await update.message.reply_text("❌ Low Balance")
+    
+    kb = [
+        [InlineKeyboardButton("🟢 1 Bomb", callback_data=f"set_1_{bet}_{uid}"), InlineKeyboardButton("🟡 3 Bombs", callback_data=f"set_3_{bet}_{uid}")],
+        [InlineKeyboardButton("🔴 5 Bombs", callback_data=f"set_5_{bet}_{uid}"), InlineKeyboardButton("💀 10 Bombs", callback_data=f"set_10_{bet}_{uid}")],
+        [InlineKeyboardButton("❌ Cancel", callback_data=f"close_{uid}")]
+    ]
+    await update.message.reply_text(f"🎮 **Game Setup**\nBet: ₹{bet}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+
+async def shop_menu(update, context):
+    if not await ensure_registered(update, context): return
+    uid = update.effective_user.id
+    kb = []
+    for k, v in SHOP_ITEMS.items():
+        kb.append([InlineKeyboardButton(f"{v['name']} - ₹{v['price']}", callback_data=f"buy_{k}_{uid}")])
+    kb.append([InlineKeyboardButton("❌ Close", callback_data=f"close_{uid}")])
+    await update.message.reply_text("🛒 **VIP SHOP**\nBuy titles to look cool on Leaderboard!", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+
+async def callback_handler(update, context):
+    q = update.callback_query
+    data = q.data
+    uid = q.from_user.id
+    
+    if data.startswith("reg_start_"):
+        if uid != int(data.split("_")[2]): return await q.answer("Not for you!", show_alert=True)
+        if register_user(uid, q.from_user.first_name):
+            await q.edit_message_text("✅ **Registered!**\nBonus ₹500 Added.", parse_mode=ParseMode.MARKDOWN)
+        else: await q.answer("Already registered!")
+        return
+
+    parts = data.split("_")
+    act = parts[0]
+    
+    if act == "buy":
+        item = SHOP_ITEMS.get(parts[1])
+        if get_balance(uid) < item["price"]: return await q.answer("No Money!", show_alert=True)
+        update_balance(uid, -item["price"])
+        users_col.update_one({"_id": uid}, {"$push": {"titles": item["name"]}})
+        await q.answer("✅ Bought!")
+        return
+
+    if act == "set":
+        mines = int(parts[1]); bet = int(parts[2]); owner = int(parts[3])
+        if uid != owner: return
+        if get_balance(owner) < bet: return await q.answer("No Money")
+        update_balance(owner, -bet)
+        
+        grid = [0]*(GRID_SIZE**2)
+        for i in random.sample(range(16), mines): grid[i] = 1
+        active_games[f"{owner}"] = {"grid": grid, "rev": [], "bet": bet, "mines": mines}
+        
+        # Grid Keyboard
+        kb = []
+        for r in range(4):
+            row = []
+            for c in range(4): row.append(InlineKeyboardButton("🟦", callback_data=f"clk_{r*4+c}_{owner}"))
+            kb.append(row)
+        await q.edit_message_text(f"💣 Mines: {mines} | Bet: ₹{bet}", reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    if act == "clk":
+        idx = int(parts[1]); owner = int(parts[2])
+        if uid != owner: return
+        game = active_games.get(f"{owner}")
+        if not game: return await q.message.delete()
+        
+        if game["grid"][idx] == 1: # LOSE
+            del active_games[f"{owner}"]
+            await q.edit_message_text(f"💥 **BOOM!** Lost ₹{game['bet']}", parse_mode=ParseMode.MARKDOWN)
+            context.job_queue.run_once(delete_job, DELETE_TIMER, chat_id=q.message.chat_id, data=q.message.message_id)
+        else: # SAFE
+            if idx not in game["rev"]: game["rev"].append(idx)
+            mults = BOMB_CONFIG[game["mines"]]
+            
+            # CHECK WIN
+            if len(game["rev"]) == (16 - game["mines"]):
+                win = int(game["bet"] * mults[-1])
+                update_balance(owner, win)
+                del active_games[f"{owner}"]
+                await q.edit_message_text(f"👑 **WON ₹{win}**", parse_mode=ParseMode.MARKDOWN)
+            else:
+                kb = []
+                for r in range(4):
+                    row = []
+                    for c in range(4):
+                        i = r*4+c
+                        txt = "💎" if i in game["rev"] else "🟦"
+                        cb = "noop" if i in game["rev"] else f"clk_{i}_{owner}"
+                        row.append(InlineKeyboardButton(txt, callback_data=cb))
+                    kb.append(row)
+                win_now = int(game["bet"] * mults[len(game["rev"])-1])
+                kb.append([InlineKeyboardButton(f"💰 Cashout ₹{win_now}", callback_data=f"cash_{owner}")])
+                await q.edit_message_text(f"💎 Safe! Won: ₹{win_now}", reply_markup=InlineKeyboardMarkup(kb))
+        return
+
+    if act == "cash":
+        owner = int(parts[1])
+        if uid != owner: return
+        game = active_games.get(f"{owner}")
+        mults = BOMB_CONFIG[game["mines"]]
+        win = int(game["bet"] * mults[len(game["rev"])-1])
+        update_balance(owner, win)
+        del active_games[f"{owner}"]
+        await q.edit_message_text(f"💰 **Cashed Out: ₹{win}**", parse_mode=ParseMode.MARKDOWN)
+        context.job_queue.run_once(delete_job, DELETE_TIMER, chat_id=q.message.chat_id, data=q.message.message_id)
+
+    if act == "close": await q.message.delete()
+
+# --- MAIN ---
+def main():
+    keep_alive()
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    
+    # Commands
+    app.add_handler(CommandHandler("start", start.start))
+    app.add_handler(CommandHandler("help", help.help_command))
+    app.add_handler(CommandHandler("bet", bet_menu))
+    app.add_handler(CommandHandler("shop", shop_menu))
+    app.add_handler(CommandHandler("cast", admin.broadcast))
+    app.add_handler(CommandHandler("code", admin.create_code))
+    app.add_handler(CommandHandler("add", admin.add_money))
+    
+    # New Modules
+    app.add_handler(CommandHandler("ranking", group.ranking))
+    app.add_handler(CommandHandler("market", group.market_info))
+    app.add_handler(CommandHandler("invest", group.invest))
+    app.add_handler(CommandHandler("sell", group.sell_shares))
+    app.add_handler(CommandHandler("top", leaderboard.user_leaderboard)) # NEW
+    
+    app.add_handler(CallbackQueryHandler(callback_handler))
+    
+    # Message Tracker
+    async def track(u, c):
+        if u.effective_chat.type in ["group", "supergroup"]:
+            update_group_activity(u.effective_chat.id, u.effective_chat.title)
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), track))
+    
+    print("🚀 BOT STARTED SUCCESSFULLY!")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
+  
