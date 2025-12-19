@@ -8,10 +8,10 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 # IMPORTS
 from config import TELEGRAM_TOKEN, GRID_SIZE, DELETE_TIMER
 from database import users_col, codes_col, get_user, update_balance, get_balance, check_registered, register_user, update_group_activity
-from ai_chat import get_yuki_response
+from ai_chat import get_yuki_response # <-- Updated AI Import
 import admin, start, help, group, leaderboard
 
-# --- FLASK SERVER ---
+# --- FLASK SERVER (FOR UPTIME) ---
 app = Flask('')
 
 @app.route('/')
@@ -47,7 +47,8 @@ async def ensure_registered(update, context):
         return False
     return True
 
-# 🔥 FIXED: BALANCE COMMAND ADDED
+# --- COMMANDS ---
+
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     bal = get_balance(user.id)
@@ -179,7 +180,7 @@ async def callback_handler(update, context):
         context.job_queue.run_once(delete_job, DELETE_TIMER, chat_id=q.message.chat_id, data=q.message.message_id)
     if act == "close": await q.message.delete()
 
-# --- 🔥 UPDATED MESSAGE HANDLER (GROUP LOGIC) ---
+# --- 🔥 UPDATED MESSAGE HANDLER (WITH MEMORY SUPPORT) ---
 async def handle_message(update, context):
     user = update.effective_user
     chat = update.effective_chat
@@ -193,25 +194,26 @@ async def handle_message(update, context):
     # 2. Yuki Response Logic
     should_reply = False
     
-    # CASE A: Private Chat (Hamesha reply karegi)
+    # CASE A: Private Chat
     if chat.type == "private":
         should_reply = True
         
-    # CASE B: Group Chat (Specific Conditions)
+    # CASE B: Group Chat
     elif chat.type in ["group", "supergroup"]:
-        # 1. Agar reply kiya bot ko
+        # Reply to bot, "yuki" in text, or @BotMention
         if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
             should_reply = True
-        # 2. Agar naam liya "Yuki"
         elif "yuki" in text.lower():
             should_reply = True
-        # 3. Agar mention kiya "@BotUsername"
         elif context.bot.username in text:
             should_reply = True
 
     if should_reply:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        ai_reply = get_yuki_response(text, user.first_name)
+        
+        # 👇 IMPORTANT: Pass user.id for MEMORY
+        ai_reply = get_yuki_response(user.id, text, user.first_name)
+        
         await update.message.reply_text(ai_reply)
 
 # --- MAIN ---
@@ -221,7 +223,7 @@ def main():
     
     app.add_handler(CommandHandler("start", start.start))
     app.add_handler(CommandHandler("help", help.help_command))
-    app.add_handler(CommandHandler("balance", balance_cmd)) # ✅ Added Here
+    app.add_handler(CommandHandler("balance", balance_cmd))
     app.add_handler(CommandHandler("bet", bet_menu))
     app.add_handler(CommandHandler("shop", shop_menu))
     app.add_handler(CommandHandler("redeem", redeem_code))
@@ -248,4 +250,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+
