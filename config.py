@@ -3,13 +3,18 @@ import os
 # ⚙️ CONFIGURATION
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") 
 MONGO_URL = os.getenv("MONGO_URL")
-OWNER_ID = 6356015122  # Apna ID daal
+OWNER_ID = 6356015122  # Tumhara (Owner) Telegram ID
 
-# Game Settings
+# 🤖 AI CHAT CONFIG
+OWNER_NAME = "SUDEEP"  # Yahan apna naam likho (Yuki tumhe is naam se bulayegi)
+
+# 🎮 GAME SETTINGS
 GRID_SIZE = 4
 MAX_LOAN = 5000
 LOAN_INTEREST = 0.10
-DELETE_TIMER = 30  # Auto-delete seconds
+DELETE_TIMER = 17  # Result message kitne seconds baad delete hoga
 
-# Image for Group Ranking Default
+# 🏆 RANKING IMAGE
+# Agar top group ki photo nahi milti toh ye default image dikhegi
 DEFAULT_BANNER = "https://i.ibb.co/vzDpQx9/ranking-banner.jpg"
+
