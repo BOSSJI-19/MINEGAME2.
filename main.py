@@ -11,7 +11,8 @@ from database import users_col, codes_col, update_balance, get_balance, check_re
 from ai_chat import get_yuki_response, get_mimi_sticker
 
 # MODULES
-import admin, start, help, group, leaderboard, pay, bank, bet, wordseek, grouptools, chatstat
+# 🔥 Added 'logger' and 'events' imports
+import admin, start, help, group, leaderboard, pay, bank, bet, wordseek, grouptools, chatstat, logger, events
 
 # 🔥 Import Anti-Spam
 from antispam import check_spam
@@ -105,32 +106,37 @@ async def callback_handler(update, context):
     data = q.data
     uid = q.from_user.id
     
-    # 1. ADMIN PANEL
+    # 🔥 1. LOGGER CLOSE BUTTON (Ye Naya Hai)
+    if data == "close_log":
+        await q.message.delete()
+        return
+
+    # 2. ADMIN PANEL
     if data.startswith("admin_"):
         await admin.admin_callback(update, context)
         return
 
-    # 2. WORD SEEK GAME
+    # 3. WORD SEEK GAME
     if data.startswith(("wrank_", "new_wordseek_", "close_wrank", "end_wordseek")):
         await wordseek.wordseek_callback(update, context)
         return
 
-    # 3. START MENU
+    # 4. START MENU
     if data.startswith(("help_", "start_chat_ai", "back_home")):
         await start.start_callback(update, context)
         return
 
-    # 4. BET LOGIC
+    # 5. BET LOGIC
     if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")):
         await bet.bet_callback(update, context)
         return
 
-    # 5. REVIVE LOGIC
+    # 6. REVIVE LOGIC
     if data.startswith("revive_"):
         await pay.revive_callback(update, context)
         return
 
-    # 6. REGISTER
+    # 7. REGISTER
     if data.startswith("reg_start_"):
         target_id = int(data.split("_")[2])
         if uid != target_id: return await q.answer("Not for you!", show_alert=True)
@@ -138,7 +144,7 @@ async def callback_handler(update, context):
         else: await q.answer("Already registered!")
         return
 
-    # 7. SHOP
+    # 8. SHOP
     if data.startswith("buy_"):
         parts = data.split("_")
         target_id = int(parts[2])
@@ -151,8 +157,7 @@ async def callback_handler(update, context):
         await q.message.delete()
         return
 
-    # 🔥 8. CHAT STATS (Ranking) 🔥
-    # NOTE: 'hide_rank' use kiya hai taaki Bet logic se clash na ho
+    # 🔥 9. CHAT STATS (Ranking) 🔥
     if data.startswith(("rank_", "hide_rank")):
         await chatstat.rank_callback(update, context)
         return
@@ -259,16 +264,21 @@ def main():
     app.add_handler(CommandHandler("protect", pay.protect_user))
     app.add_handler(CommandHandler("alive", pay.check_status))
     
+    # 🔥 LOGGER HANDLERS 🔥
+    app.add_handler(CommandHandler("restart", logger.restart_bot))
+    app.add_handler(CommandHandler("ping", logger.ping_bot))
+    app.add_handler(CommandHandler("stats", logger.stats_bot))
+    
     # 🔥 WORD SEEK HANDLERS 🔥
     app.add_handler(CommandHandler("new", wordseek.start_wordseek))
     app.add_handler(CommandHandler("end", wordseek.stop_wordseek))
     app.add_handler(CommandHandler("wrank", wordseek.wordseek_rank))
     
-    # 🔥 RANKING HANDLER (Fixed for /Crank, /CRANK and Groups) 🔥
+    # 🔥 RANKING HANDLER (Fixed for /Crank) 🔥
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^[\./]crank(?:@\w+)?$'), chatstat.show_leaderboard))
     
     # 🔥 GROUP TOOLS HANDLERS (Regex for . and /) 🔥
-    app.add_handler(MessageHandler(filters.Regex(r'^[\./]id$'), grouptools.get_id)) # NEW ID COMMAND
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]id$'), grouptools.get_id)) 
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]warn$'), grouptools.warn_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]unwarn$'), grouptools.unwarn_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]mute$'), grouptools.mute_user))
@@ -286,8 +296,12 @@ def main():
     
     app.add_handler(CallbackQueryHandler(callback_handler))
     
-    # Welcome & Messages
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, group.welcome_user))
+    # 🔥 EVENTS HANDLER (WELCOME & LEAVE LOGS) 🔥
+    # 'events.py' is handling Welcome and Logs (Added/Removed)
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, events.welcome_user))
+    app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, events.track_leave))
+    
+    # General Message Handler
     app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
     
     print("🚀 BOT STARTED SUCCESSFULLY!")
