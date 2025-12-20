@@ -5,7 +5,8 @@ from config import OWNER_ID
 from database import (
     users_col, groups_col, codes_col, update_balance, 
     add_api_key, remove_api_key, get_all_keys,
-    add_game_key, remove_game_key, get_game_keys, # 🔥 New Imports for Game Keys
+    add_game_key, remove_game_key, get_game_keys,
+    add_sticker_pack, remove_sticker_pack, get_sticker_packs, # 🔥 New Imports
     wipe_database, set_economy_status, get_economy_status
 )
 
@@ -17,24 +18,29 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     eco_status = "🟢 ON" if get_economy_status() else "🔴 OFF"
     chat_keys = len(get_all_keys())
-    game_keys = len(get_game_keys()) # 🔥 Count Game Keys
+    game_keys = len(get_game_keys())
+    stickers = len(get_sticker_packs()) # Count Packs
 
     text = (
         f"👮‍♂️ **ADMIN CONTROL PANEL**\n\n"
         f"⚙️ **Economy:** {eco_status}\n"
         f"💬 **Chat Keys:** `{chat_keys}`\n"
-        f"🎮 **Game Keys:** `{game_keys}`\n\n"
+        f"🎮 **Game Keys:** `{game_keys}`\n"
+        f"👻 **Sticker Packs:** `{stickers}`\n\n"
         f"👇 Select an action:"
     )
 
     kb = [
         [InlineKeyboardButton(f"Economy: {eco_status}", callback_data="admin_toggle_eco")],
-        [InlineKeyboardButton("📢 Broadcast (Any Media)", callback_data="admin_cast_ask"), InlineKeyboardButton("🎁 Create Code", callback_data="admin_code_ask")],
+        [InlineKeyboardButton("📢 Broadcast", callback_data="admin_cast_ask"), InlineKeyboardButton("🎁 Create Code", callback_data="admin_code_ask")],
         [InlineKeyboardButton("💰 Add Money", callback_data="admin_add_ask"), InlineKeyboardButton("💸 Take Money", callback_data="admin_take_ask")],
         
-        # 🔥 Separate Buttons for Chat & Game Keys
+        # Keys
         [InlineKeyboardButton("➕ Chat Key", callback_data="admin_key_add"), InlineKeyboardButton("➕ Game Key", callback_data="admin_game_key_add")],
         [InlineKeyboardButton("➖ Del Chat Key", callback_data="admin_key_del"), InlineKeyboardButton("➖ Del Game Key", callback_data="admin_game_key_del")],
+        
+        # 🔥 Sticker Packs Buttons
+        [InlineKeyboardButton("➕ Add Sticker Pack", callback_data="admin_pack_add"), InlineKeyboardButton("➖ Del Sticker Pack", callback_data="admin_pack_del")],
         
         [InlineKeyboardButton("☢️ WIPE DATA", callback_data="admin_wipe_ask"), InlineKeyboardButton("❌ Close", callback_data="admin_close")]
     ]
@@ -107,7 +113,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"➖ **Delete CHAT Key**\n\nActive Keys:\n{all_keys}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
-    # --- 🔥 GAME KEY ASK (NEW) ---
+    # --- GAME KEY ASK ---
     if data == "admin_game_key_add":
         context.user_data['admin_state'] = 'add_game_key'
         kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
@@ -119,6 +125,25 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         all_keys = "\n".join([f"`{k}`" for k in get_game_keys()])
         kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
         await q.edit_message_text(f"➖ **Delete GAME Key**\n\nActive Game Keys:\n{all_keys}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        return
+
+    # --- 🔥 STICKER PACK LOGIC ---
+    if data == "admin_pack_add":
+        context.user_data['admin_state'] = 'add_pack'
+        kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
+        await q.edit_message_text(
+            "➕ **Add Sticker Pack**\n\n"
+            "Pack ka **Link** ya **Name** bhejo.\n"
+            "Ex: `HotCherry` ya `https://t.me/addstickers/HotCherry`", 
+            reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
+    if data == "admin_pack_del":
+        context.user_data['admin_state'] = 'del_pack'
+        all_packs = "\n".join([f"`{p}`" for p in get_sticker_packs()])
+        kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
+        await q.edit_message_text(f"➖ **Delete Pack**\n\nActive Packs:\n{all_packs}\n\nNaam bhejo delete karne ke liye.", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
     # --- CODE ASK ---
@@ -188,6 +213,31 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     text = msg.text.strip()
 
+    # --- 🔥 STICKER PACK ADD 🔥
+    if state == 'add_pack':
+        # Link se naam nikalna (https://t.me/addstickers/Name -> Name)
+        pack_name = text.split('/')[-1].strip()
+        
+        try:
+            # Check karo ki pack valid hai ya nahi Telegram par
+            await context.bot.get_sticker_set(pack_name)
+            
+            if add_sticker_pack(pack_name):
+                await msg.reply_text(f"✅ **Pack Added:** `{pack_name}`")
+            else:
+                await msg.reply_text("⚠️ Pack already exists.")
+        except:
+            await msg.reply_text("❌ **Invalid Pack!**\nTelegram par ye sticker pack exist nahi karta.\nSahi naam bhejo (e.g., `HotCherry`).")
+        
+        context.user_data['admin_state'] = None
+        return True
+
+    if state == 'del_pack':
+        if remove_sticker_pack(text): await msg.reply_text("🗑 **Pack Deleted!**")
+        else: await msg.reply_text("❌ Not Found.")
+        context.user_data['admin_state'] = None
+        return True
+
     # --- MONEY LOGIC ---
     if state in ['add_money', 'take_money']:
         try:
@@ -215,7 +265,7 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['admin_state'] = None
         return True
 
-    # --- 🔥 GAME KEYS LOGIC (NEW) ---
+    # --- GAME KEYS LOGIC ---
     if state == 'add_game_key':
         if add_game_key(text): await msg.reply_text("✅ **Game Key Added!** (For WordSeek)")
         else: await msg.reply_text("⚠️ Key Exists!")
