@@ -5,6 +5,7 @@ from config import OWNER_ID
 from database import (
     users_col, groups_col, codes_col, update_balance, 
     add_api_key, remove_api_key, get_all_keys,
+    add_game_key, remove_game_key, get_game_keys, # 🔥 New Imports for Game Keys
     wipe_database, set_economy_status, get_economy_status
 )
 
@@ -15,12 +16,14 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['admin_state'] = None
     
     eco_status = "🟢 ON" if get_economy_status() else "🔴 OFF"
-    key_count = len(get_all_keys())
+    chat_keys = len(get_all_keys())
+    game_keys = len(get_game_keys()) # 🔥 Count Game Keys
 
     text = (
         f"👮‍♂️ **ADMIN CONTROL PANEL**\n\n"
         f"⚙️ **Economy:** {eco_status}\n"
-        f"🔑 **Active Keys:** `{key_count}`\n\n"
+        f"💬 **Chat Keys:** `{chat_keys}`\n"
+        f"🎮 **Game Keys:** `{game_keys}`\n\n"
         f"👇 Select an action:"
     )
 
@@ -28,7 +31,11 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"Economy: {eco_status}", callback_data="admin_toggle_eco")],
         [InlineKeyboardButton("📢 Broadcast (Any Media)", callback_data="admin_cast_ask"), InlineKeyboardButton("🎁 Create Code", callback_data="admin_code_ask")],
         [InlineKeyboardButton("💰 Add Money", callback_data="admin_add_ask"), InlineKeyboardButton("💸 Take Money", callback_data="admin_take_ask")],
-        [InlineKeyboardButton("➕ Add Key", callback_data="admin_key_add"), InlineKeyboardButton("➖ Del Key", callback_data="admin_key_del")],
+        
+        # 🔥 Separate Buttons for Chat & Game Keys
+        [InlineKeyboardButton("➕ Chat Key", callback_data="admin_key_add"), InlineKeyboardButton("➕ Game Key", callback_data="admin_game_key_add")],
+        [InlineKeyboardButton("➖ Del Chat Key", callback_data="admin_key_del"), InlineKeyboardButton("➖ Del Game Key", callback_data="admin_game_key_del")],
+        
         [InlineKeyboardButton("☢️ WIPE DATA", callback_data="admin_wipe_ask"), InlineKeyboardButton("❌ Close", callback_data="admin_close")]
     ]
     
@@ -86,18 +93,32 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text("💸 **Take Money Mode**\n\nFormat: `User_ID Amount`\nExample: `123456789 5000`", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
-    # --- KEY ASK ---
+    # --- CHAT KEY ASK ---
     if data == "admin_key_add":
         context.user_data['admin_state'] = 'add_key'
         kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
-        await q.edit_message_text("➕ **Add API Key**\n\nNayi Gemini API Key paste karo 👇", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        await q.edit_message_text("➕ **Add CHAT API Key (Mimi)**\n\nNayi Gemini API Key paste karo 👇", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "admin_key_del":
         context.user_data['admin_state'] = 'del_key'
         all_keys = "\n".join([f"`{k}`" for k in get_all_keys()])
         kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
-        await q.edit_message_text(f"➖ **Delete API Key**\n\nActive Keys:\n{all_keys}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        await q.edit_message_text(f"➖ **Delete CHAT Key**\n\nActive Keys:\n{all_keys}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        return
+
+    # --- 🔥 GAME KEY ASK (NEW) ---
+    if data == "admin_game_key_add":
+        context.user_data['admin_state'] = 'add_game_key'
+        kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
+        await q.edit_message_text("➕ **Add GAME API Key (WordSeek)**\n\nGame wali Gemini API Key paste karo 👇", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if data == "admin_game_key_del":
+        context.user_data['admin_state'] = 'del_game_key'
+        all_keys = "\n".join([f"`{k}`" for k in get_game_keys()])
+        kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
+        await q.edit_message_text(f"➖ **Delete GAME Key**\n\nActive Game Keys:\n{all_keys}", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
     # --- CODE ASK ---
@@ -144,7 +165,6 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         count = 0
         status_msg = await msg.reply_text("📢 Sending Broadcast (Media supported)...")
         
-        # Copy Message Logic (Copies Text, Sticker, Photo, Video etc.)
         for u in users:
             try: 
                 await context.bot.copy_message(chat_id=u["_id"], from_chat_id=msg.chat_id, message_id=msg.message_id)
@@ -162,7 +182,6 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return True
 
     # --- VALIDATION FOR OTHER COMMANDS ---
-    # Baaki commands ke liye Text zaroori hai
     if not msg.text:
         await msg.reply_text("❌ Is command ke liye sirf Text bhejo.")
         return True
@@ -183,15 +202,28 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['admin_state'] = None
         return True
 
-    # --- KEYS LOGIC ---
+    # --- CHAT KEYS LOGIC ---
     if state == 'add_key':
-        if add_api_key(text): await msg.reply_text("✅ Key Added!")
+        if add_api_key(text): await msg.reply_text("✅ Chat Key Added!")
         else: await msg.reply_text("⚠️ Key Exists!")
         context.user_data['admin_state'] = None
         return True
 
     if state == 'del_key':
-        if remove_api_key(text): await msg.reply_text("🗑 Key Deleted!")
+        if remove_api_key(text): await msg.reply_text("🗑 Chat Key Deleted!")
+        else: await msg.reply_text("❌ Key Not Found.")
+        context.user_data['admin_state'] = None
+        return True
+
+    # --- 🔥 GAME KEYS LOGIC (NEW) ---
+    if state == 'add_game_key':
+        if add_game_key(text): await msg.reply_text("✅ **Game Key Added!** (For WordSeek)")
+        else: await msg.reply_text("⚠️ Key Exists!")
+        context.user_data['admin_state'] = None
+        return True
+
+    if state == 'del_game_key':
+        if remove_game_key(text): await msg.reply_text("🗑 **Game Key Deleted!**")
         else: await msg.reply_text("❌ Key Not Found.")
         context.user_data['admin_state'] = None
         return True
@@ -211,4 +243,3 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return True
 
     return False
-            
