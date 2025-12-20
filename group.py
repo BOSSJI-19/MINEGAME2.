@@ -3,8 +3,25 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from database import groups_col, investments_col, users_col, get_group_price, update_balance
 
+# --- 1. WELCOME MESSAGE (New) ---
+async def welcome_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Agar koi naya banda aaya
+    if not update.message.new_chat_members: return
+    
+    chat_title = update.effective_chat.title
+
+    for member in update.message.new_chat_members:
+        # Agar Bot khud add hua hai to ignore kare (wo alag handler me hai)
+        if member.id == context.bot.id: continue
+        
+        # 🔥 TUMHARA FORMAT
+        await update.message.reply_text(
+            f"👀 Hey {member.first_name} welcome to ゜{chat_title}"
+        )
+
+# --- 2. RANKING ---
 async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1. Top 10 Groups nikalo Activity ke hisaab se
+    # Top 10 Groups nikalo Activity ke hisaab se
     top_groups_cursor = groups_col.find().sort("activity", -1).limit(10)
     top_groups = list(top_groups_cursor)
 
@@ -12,7 +29,6 @@ async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Market abhi khali hai! Koi group active nahi.")
         return
 
-    # 2. List Banao
     msg = "🏢 **TOP GROUPS MARKET** 🏢\n\n"
     rank = 1
     
@@ -23,23 +39,19 @@ async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Price Calculation
         price = 10 + (activity * 0.5)
 
-        # 3. HIGHLIGHT LOGIC (Blockquote for Rank 1)
+        # Highlight Rank 1
         if rank == 1:
-            # '>' lagane se Telegram me vertical line (Blockquote) aati hai
             msg += f"> 👑 **{name}**\n> 🔥 Score: {activity} | 📈 Price: ₹{price}\n\n"
         else:
-            # Baaki sab normal dikhenge
             msg += f"{rank}. **{name}**\n   🔥 Score: {activity} | 📈 Price: ₹{price}\n\n"
             
         rank += 1
     
     msg += "💡 _Tip: Kisi bhi group me `/invest` use karein!_"
-
-    # 4. Sirf Text Bhejo (Photo Hata Di)
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
+# --- 3. MARKET INFO ---
 async def market_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Private chat me mana kar dega
     if update.effective_chat.type == "private": 
         await update.message.reply_text("❌ Ye command sirf Groups me chalti hai!")
         return
@@ -55,6 +67,7 @@ async def market_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN
     )
 
+# --- 4. INVEST ---
 async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
@@ -86,6 +99,7 @@ async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ **Invested ₹{amount}**\n📈 Shares: {round(shares, 2)} @ ₹{price}", parse_mode=ParseMode.MARKDOWN)
 
+# --- 5. SELL SHARES ---
 async def sell_shares(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
@@ -102,4 +116,4 @@ async def sell_shares(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_balance(user.id, current_val)
     
     await update.message.reply_text(f"💵 **Sold Shares!**\n💰 Profit Booked: ₹{current_val}", parse_mode=ParseMode.MARKDOWN)
-    
+
