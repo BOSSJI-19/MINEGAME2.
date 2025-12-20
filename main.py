@@ -103,6 +103,11 @@ async def callback_handler(update, context):
     data = q.data
     uid = q.from_user.id
     
+       # 🔥 ADMIN PANEL LOGIC 🔥
+    if data.startswith("admin_"):
+        await admin.admin_callback(update, context)
+        return
+    # -----------------------
     # 🔥 0. START MENU NAVIGATION (Modern UI) 🔥
     if data.startswith(("help_", "start_chat_ai", "back_home")):
         await start.start_callback(update, context)
@@ -145,8 +150,13 @@ async def handle_message(update, context):
     chat = update.effective_chat
     if not update.message or not update.message.text: return
     text = update.message.text
-
-    # Update Name
+    
+     # 🔥 ADMIN INPUT CHECK 🔥
+    # Agar Admin Panel ka koi option select hai, to text wahan bhej do
+    if await admin.handle_admin_input(update, context):
+        return
+    # -----------------------
+    # Updat name
     update_username(user.id, user.first_name)
 
     if chat.type in ["group", "supergroup"]:
@@ -209,7 +219,8 @@ def main():
     app.add_handler(CommandHandler("addkey", admin.add_key_cmd))
     app.add_handler(CommandHandler("delkey", admin.remove_key_cmd))
     app.add_handler(CommandHandler("keys", admin.list_keys_cmd))
-    
+    app.add_handler(CommandHandler("admin", admin.admin_panel))
+
     app.add_handler(CallbackQueryHandler(admin.reset_callback, pattern="^confirm_wipe$|^cancel_wipe$"))
     app.add_handler(CallbackQueryHandler(callback_handler))
     
