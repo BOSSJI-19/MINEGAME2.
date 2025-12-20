@@ -50,11 +50,21 @@ async def group_join_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- COMMANDS ---
 
+# 🔥 UPDATED BALANCE COMMAND 🔥
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    bal = get_balance(user.id)
-    # 🔥 FIX: No quote=True, No ParseMode for name
-    await update.message.reply_text(f"💳 {user.first_name}'s Balance: ₹{bal}")
+    # Check agar kisi ke message par reply kiya hai
+    if update.message.reply_to_message:
+        target = update.message.reply_to_message.from_user
+    else:
+        target = update.effective_user
+
+    # Bot check
+    if target.is_bot:
+        await update.message.reply_text("🤖 Bots ke paas paise nahi hote bhai!")
+        return
+
+    bal = get_balance(target.id)
+    await update.message.reply_text(f"💳 **{target.first_name}'s Balance:** ₹{bal}", parse_mode=ParseMode.MARKDOWN)
 
 async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await ensure_registered(update, context): return
@@ -203,8 +213,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin.reset_callback, pattern="^confirm_wipe$|^cancel_wipe$"))
     app.add_handler(CallbackQueryHandler(callback_handler))
     
-    # Agar alag se sirf welcome chahiye:
-
+    # Welcome Handler
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, group.welcome_user))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     
