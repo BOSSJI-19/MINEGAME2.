@@ -124,10 +124,18 @@ async def callback_handler(update, context):
         await wordseek.wordseek_callback(update, context)
         return
 
-    # 4. START MENU
-    if data.startswith(("help_", "start_chat_ai", "back_home")):
+        # 4. START MENU & HELP (Separated)
+    
+    # Help Menu Buttons -> help.py
+    if data.startswith(("help_", "close_help")):
+        await help.help_callback(update, context)
+        return
+
+    # Start Menu Buttons -> start.py
+    if data.startswith(("start_chat_ai", "back_home")):
         await start.start_callback(update, context)
         return
+
 
     # 5. BET LOGIC
     if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")):
