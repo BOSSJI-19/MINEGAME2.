@@ -5,61 +5,53 @@ from database import add_warning, remove_warning, reset_warnings
 from config import OWNER_ID
 
 # --- HELPER: CHECK USER ADMIN ---
-async def is_admin(update: Update):
+async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check karega ki command chalane wala Admin hai ya nahi"""
     user = update.effective_user
     chat = update.effective_chat
     
-    # 1. Private Chat me Admin check fail hoga (Logic)
+    # 1. Owner Check (Sabse pehle)
+    try:
+        if str(user.id) == str(OWNER_ID): 
+            return True
+    except: pass
+
+    # 2. Private Chat Check
     if chat.type == "private":
+        await update.message.reply_text("❌ Ye command sirf Group me kaam karegi.")
         return False
 
-    # 2. Owner Check
-    if user.id == int(OWNER_ID): 
-        return True
-    
     # 3. Group Admin Check
     try:
         member = await chat.get_member(user.id)
-        if member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+        if member.status in ['administrator', 'creator']:
             return True
     except Exception as e:
-        print(f"❌ Admin Check Error: {e}")
+        print(f"DEBUG: Admin check error: {e}")
     
+    # Agar Admin nahi hai to user ko batao
+    await update.message.reply_text("❌ **Access Denied!** Sirf Admins ye command use kar sakte hain.")
     return False
-
-# --- HELPER: CHECK BOT PERMISSIONS ---
-async def bot_can_restrict(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check karega ki Bot khud Admin hai ya nahi"""
-    chat = update.effective_chat
-    try:
-        bot_member = await chat.get_member(context.bot.id)
-        return bot_member.status == ChatMemberStatus.ADMINISTRATOR
-    except:
-        return False
 
 # --- COMMANDS ---
 
 async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    if chat.type == "private":
-        return await update.message.reply_text("❌ Ye command sirf Group me chalegi.")
-
-    # Auto Delete Command
+    # Auto Delete try karo, fail hua to ignore (matlab bot admin nahi hai)
     try: await update.message.delete()
     except: pass
 
-    # Permission Check
-    if not await is_admin(update): return
+    # Admin Check (Ab ye User ko reply karega agar wo admin nahi hai)
+    if not await is_admin(update, context): return
 
     if not update.message.reply_to_message:
-        return await chat.send_message(f"⚠️ **{update.effective_user.first_name}**, kisi user ko reply karke command do.", parse_mode=ParseMode.MARKDOWN)
+        return await update.message.reply_text("⚠️ **Galti!** Kisi user ke message par reply karke `.warn` likho.")
 
     target = update.message.reply_to_message.from_user
+    chat = update.effective_chat
     
     # Self/Bot Check
-    if target.id == int(OWNER_ID) or target.is_bot:
-        return await chat.send_message("❌ Owner ya Bot ko warn nahi kar sakte!")
+    if str(target.id) == str(OWNER_ID) or target.is_bot:
+        return await update.message.reply_text("❌ Owner ya Bot ko warn nahi kar sakte!")
 
     # Database call
     count = add_warning(chat.id, target.id)
@@ -69,47 +61,47 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await chat.ban_member(target.id)
             reset_warnings(chat.id, target.id)
-            await chat.send_message(f"🚫 **Banned!** {target.first_name} reached 3 warnings.")
+            await chat.send_message(f"🚫 **BANNED!**\n👤 {target.first_name} ki 3 warnings puri ho gayi.")
         except Exception as e:
-            await chat.send_message(f"❌ **Error:** Main {target.first_name} ko ban nahi kar pa raha.\nMujhe Admin banao! ({e})")
+            await chat.send_message(f"❌ **Error:** Main ban nahi kar pa raha.\nKya main Group Admin hoon?\nError: `{e}`")
     else:
-        await chat.send_message(f"⚠️ **Warning!** {target.first_name} has {count}/3 warnings.")
+        await chat.send_message(f"⚠️ **WARNING!**\n👤 {target.first_name}\nCount: {count}/3")
 
 async def unwarn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     chat = update.effective_chat
     
     count = remove_warning(chat.id, target.id)
-    await chat.send_message(f"✅ **Unwarned!** {target.first_name} now has {count} warnings.")
+    await chat.send_message(f"✅ **Unwarned!**\n👤 {target.first_name}\nWarnings Left: {count}")
 
 async def mute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     chat = update.effective_chat
     
     try:
         await chat.restrict_member(target.id, permissions=ChatPermissions(can_send_messages=False))
-        await chat.send_message(f"🔇 **Muted!** {target.first_name}")
+        await chat.send_message(f"🔇 **Muted!** {target.first_name} ab message nahi bhej payega.")
     except Exception as e:
-        await chat.send_message(f"❌ Error: Mujhe Admin rights chahiye. ({e})")
+        await chat.send_message(f"❌ Error: {e}")
 
 async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     chat = update.effective_chat
@@ -125,7 +117,7 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 can_send_polls=True
             )
         )
-        await chat.send_message(f"🔊 **Unmuted!** {target.first_name}")
+        await chat.send_message(f"🔊 **Unmuted!** {target.first_name} ab bol sakta hai.")
     except Exception as e:
         await chat.send_message(f"❌ Error: {e}")
 
@@ -133,27 +125,27 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     try:
         await update.effective_chat.ban_member(target.id)
-        await update.effective_chat.send_message(f"🚫 **Banned!** {target.first_name}")
+        await update.effective_chat.send_message(f"🚫 **BANNED!**\n👤 {target.first_name} ko group se nikal diya gaya.")
     except Exception as e:
-        await update.effective_chat.send_message(f"❌ Error: {e}")
+        await update.effective_chat.send_message(f"❌ **Error:** Main Ban nahi kar pa raha.\nCheck karo main Admin hoon ya nahi.\nDebug: `{e}`")
 
 async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     try:
         await update.effective_chat.unban_member(target.id)
-        await update.effective_chat.send_message(f"✅ **Unbanned!** {target.first_name}")
+        await update.effective_chat.send_message(f"✅ **Unbanned!** {target.first_name} wapis aa sakta hai.")
     except Exception as e:
         await update.effective_chat.send_message(f"❌ Error: {e}")
 
@@ -161,8 +153,8 @@ async def kick_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     try:
@@ -176,8 +168,8 @@ async def promote_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     
@@ -204,7 +196,7 @@ async def promote_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_change_info=can_change_info,
             is_anonymous=False
         )
-        await update.effective_chat.send_message(f"👮‍♂️ **Promoted!** {target.first_name}")
+        await update.effective_chat.send_message(f"👮‍♂️ **Promoted!** {target.first_name} is now Admin.")
     except Exception as e:
         await update.effective_chat.send_message(f"❌ Error: {e}")
 
@@ -212,8 +204,8 @@ async def demote_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     target = update.message.reply_to_message.from_user
     try:
@@ -225,16 +217,16 @@ async def demote_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             can_change_info=False,
             is_anonymous=False
         )
-        await update.effective_chat.send_message(f"⬇️ **Demoted!** {target.first_name}")
-    except:
-        await update.effective_chat.send_message("❌ Failed. Check my permissions.")
+        await update.effective_chat.send_message(f"⬇️ **Demoted!** {target.first_name}.")
+    except Exception as e:
+        await update.effective_chat.send_message(f"❌ Error: {e}")
 
 async def set_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     if not context.args: return
     title = " ".join(context.args)
@@ -243,28 +235,31 @@ async def set_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await update.effective_chat.set_administrator_custom_title(target.id, title)
         await update.effective_chat.send_message(f"🏷 **Title Set:** {title}")
-    except:
-        await update.effective_chat.send_message("❌ Error. Needs 'Can Promote' rights.")
+    except Exception as e:
+        await update.effective_chat.send_message(f"❌ Error: {e}\n(Bot needs 'Add New Admins' permission to set titles)")
 
 async def pin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
-    if not update.message.reply_to_message: return
+    if not await is_admin(update, context): return
+    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
 
     try:
         await update.message.reply_to_message.pin()
-    except: pass
+    except Exception as e:
+        await update.effective_chat.send_message(f"❌ Error: {e}")
 
 async def unpin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
     
-    if not await is_admin(update): return
+    if not await is_admin(update, context): return
     try:
         await update.effective_chat.unpin_all_messages() 
-    except: pass
+        await update.effective_chat.send_message("✅ All messages unpinned.")
+    except Exception as e:
+        await update.effective_chat.send_message(f"❌ Error: {e}")
 
 async def delete_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Bot Command delete karo
@@ -272,15 +267,14 @@ async def delete_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
     
     # Check Admin
-    if not await is_admin(update): return
+    if not await is_admin(update, context): return
 
     # Target Message delete karo
     if update.message.reply_to_message:
         try:
             await update.message.reply_to_message.delete()
-        except:
-            # Agar fail hua (e.g. msg too old), ignore karo
-            pass
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error: Delete nahi kar pa raha. ({e})")
 
 async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
