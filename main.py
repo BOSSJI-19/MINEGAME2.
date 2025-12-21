@@ -286,6 +286,11 @@ def main():
     app.add_handler(CommandHandler("protect", pay.protect_user))
     app.add_handler(CommandHandler("alive", pay.check_status))
 
+# User Info & Fun
+app.add_handler(CommandHandler("info", info.user_info))
+app.add_handler(CommandHandler("love", info.love_calculator))
+app.add_handler(CommandHandler("stupid", info.stupid_meter))
+
     # Callback Handlers
     app.add_handler(CallbackQueryHandler(callback_handler))
     
