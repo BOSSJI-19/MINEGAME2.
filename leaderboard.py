@@ -10,6 +10,9 @@ def to_fancy(text):
     return "".join(mapping.get(c.upper(), c) for c in text)
 
 async def user_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔥 FIX: Button click par 'message' None hota hai, isliye 'effective_message' use karein
+    message = update.effective_message 
+    
     # 1. Find Top Killer
     top_killer_data = users_col.find_one(sort=[("kills", -1)])
     top_killer_id = top_killer_data["_id"] if top_killer_data else None
@@ -37,23 +40,19 @@ async def user_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # --- TAGS LOGIC ---
         tags = ""
-        
-        # A. Shop Title (Show only first one)
-        if titles:
-            tags += f" [<b>{html.escape(titles[0])}</b>]"
-            
-        # B. KILLER TAG (If user is Top Killer and has kills > 0)
-        if user_id == top_killer_id and kills > 0:
-            tags += " 🔪[<b>THE KILLER</b>]"
+        if titles: tags += f" [<b>{html.escape(titles[0])}</b>]"
+        if user_id == top_killer_id and kills > 0: tags += " 🔪[<b>THE KILLER</b>]"
 
-        # --- FORMATTING LOGIC ---
-        # Top 3 Users get Special Quote Blocks
+        # --- FORMATTING ---
         if rank <= 3:
             msg += f"<blockquote>{icon} <b>{name}</b>{tags}\n💰 <code>₹{bal}</code> | 💀 <code>{kills} Kills</code></blockquote>\n"
         else:
-            # Rank 4-10 Simple List
             msg += f"{icon} <b>{name}</b>{tags} — <code>₹{bal}</code>\n"
             
         rank += 1
         
-    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    # 🔥 FIX: Check agar callback query hai to edit kare, nahi to reply kare
+    if update.callback_query:
+        await message.edit_text(msg, parse_mode=ParseMode.HTML)
+    else:
+        await message.reply_text(msg, parse_mode=ParseMode.HTML)
