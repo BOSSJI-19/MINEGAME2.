@@ -144,7 +144,23 @@ def remove_warning(group_id, user_id):
 def reset_warnings(group_id, user_id):
     warnings_col.delete_one({"group_id": group_id, "user_id": user_id})
 
-# --- 5. ADMIN ---
+# --- 5. WORDSEEK GAME SCORES (FIXED MISSING) ---
+
+def update_wordseek_score(user_id, name, points, group_id):
+    wordseek_col.update_one({"_id": user_id}, {"$inc": {"global_score": points}, "$set": {"name": name}}, upsert=True)
+    wordseek_col.update_one({"_id": user_id}, {"$inc": {f"group_scores.{group_id}": points}})
+
+def get_wordseek_leaderboard(group_id=None):
+    if group_id:
+        cursor = wordseek_col.find({f"group_scores.{group_id}": {"$exists": True}})
+        data = list(cursor)
+        data.sort(key=lambda x: x.get("group_scores", {}).get(str(group_id), 0), reverse=True)
+        return data[:10]
+    else:
+        cursor = wordseek_col.find().sort("global_score", -1).limit(10)
+        return list(cursor)
+
+# --- 6. ADMIN ---
 
 def get_economy_status():
     status = settings_col.find_one({"_id": "economy_status"})
@@ -158,7 +174,7 @@ def wipe_database():
     for col in cols: col.delete_many({})
     return True
 
-# --- 6. API KEYS ---
+# --- 7. API KEYS ---
 
 def add_api_key(api_key):
     if keys_col.find_one({"key": api_key}): return False 
@@ -185,7 +201,7 @@ def add_game_key(api_key):
 def remove_game_key(api_key): return game_keys_col.delete_one({"key": api_key}).deleted_count > 0
 def get_game_keys(): return [k["key"] for k in list(game_keys_col.find({}, {"_id": 0, "key": 1}))]
 
-# --- 7. STICKERS & STATS ---
+# --- 8. STICKERS & STATS ---
 
 def add_sticker_pack(pack_name):
     if not packs_col.find_one({"name": pack_name}):
@@ -213,14 +229,13 @@ def update_chat_stats(group_id, user_id, name):
         else: update_query["$inc"]["today"] = 1
         chat_stats_col.update_one({"_id": data["_id"]}, update_query)
 
-# --- 8. GROUPS & LOGGER ---
+# --- 9. GROUPS & LOGGER ---
 
 def update_group_activity(group_id, group_name):
     groups_col.update_one({"_id": group_id}, {"$set": {"name": group_name}, "$inc": {"activity": 1}}, upsert=True)
 
 def remove_group(group_id): groups_col.delete_one({"_id": group_id})
 
-# 🔥 MISSING FUNCTION FIXED HERE 🔥
 def get_group_price(group_id):
     grp = groups_col.find_one({"_id": group_id})
     if not grp: return 10.0
