@@ -2,11 +2,17 @@ import time
 import sys
 import os
 import psutil
+import html
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from config import OWNER_ID
-from database import get_total_users, get_total_groups, get_all_voice_keys # 🔥 Voice Keys Import
+from database import get_total_users, get_total_groups
+
+# Fancy Font Helper
+def to_fancy(text):
+    mapping = {'A': 'Λ', 'E': 'Є', 'S': 'δ', 'O': 'σ', 'T': 'ᴛ', 'N': 'ɴ', 'M': 'ᴍ', 'U': 'ᴜ', 'R': 'ʀ', 'D': 'ᴅ', 'C': 'ᴄ', 'P': 'ᴘ', 'I': 'ɪ', 'G': 'ɢ', 'B': 'ʙ', 'L': 'ʟ'}
+    return "".join(mapping.get(c.upper(), c) for c in text)
 
 # --- RESTART COMMAND ---
 async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -14,16 +20,21 @@ async def restart_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(user.id) != str(OWNER_ID): 
         return
 
-    msg = await update.message.reply_text("🔄 **Restarting System...**")
+    msg = await update.message.reply_text(
+        f"<blockquote><b>🔄 {to_fancy('RESTARTING SYSTEM')}...</b></blockquote>", 
+        parse_mode=ParseMode.HTML
+    )
     await time.sleep(2)
-    await msg.edit_text("✅ **System Rebooted!**\nBack online in 5 seconds.")
+    await msg.edit_text(
+        f"<blockquote><b>✅ {to_fancy('SYSTEM REBOOTED')}!</b>\nBack online in 5 seconds.</blockquote>",
+        parse_mode=ParseMode.HTML
+    )
     
     os.execl(sys.executable, sys.executable, *sys.argv)
 
-# --- PING COMMAND (FIXED WITH CLOSE ACTION) ---
+# --- PING COMMAND ---
 async def ping_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_time = time.time()
-    # Loading Emoji
     msg = await update.message.reply_text("⚡")
     end_time = time.time()
     
@@ -36,31 +47,31 @@ async def ping_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         cpu = 0; ram = 0; disk = 0
     
-    modules_list = [
-        "Admin", "Bank", "Economy", "Games", "Market", 
-        "Anti-Spam", "WordSeek", "Voice-AI", "Group Tools"
-    ]
+    modules_list = ["Admin", "Bank", "Economy", "Games", "Market", "Anti-Spam", "Voice-AI"]
     modules_str = " | ".join(modules_list)
     
     # Direct Image Link
     PING_IMG = "https://i.ibb.co/QGGKVnw/image.png" 
     
-    caption = f"""╭───〔 🤖 **sʏsᴛᴇᴍ sᴛᴀᴛᴜs** 〕───
-┆
-┆ ⚡ **ᴘɪɴɢ:** `{ping_ms}ms`
-┆ 💻 **ᴄᴘᴜ:** `{cpu}%`
-┆ 💾 **ʀᴀᴍ:** `{ram}%`
-┆ 💿 **ᴅɪsᴋ:** `{disk}%`
-┆
-╰──────────────────────
-📚 **ʟᴏᴀᴅᴇᴅ ᴍᴏᴅᴜʟᴇs:**
-`{modules_str}`"""
+    caption = f"""
+<blockquote><b>🤖 {to_fancy("SYSTEM STATUS")}</b></blockquote>
 
-    # 🔥 CLOSE BUTTON (Make sure main.py handles 'close_ping')
+<blockquote>
+<b>⚡ ᴘɪɴɢ :</b> <code>{ping_ms}ms</code>
+<b>💻 ᴄᴘᴜ :</b> <code>{cpu}%</code>
+<b>💾 ʀᴀᴍ :</b> <code>{ram}%</code>
+<b>💿 ᴅɪsᴋ :</b> <code>{disk}%</code>
+</blockquote>
+
+<blockquote>
+<b>📚 {to_fancy("LOADED MODULES")}</b>
+<code>{modules_str}</code>
+</blockquote>
+"""
+
     kb = [[InlineKeyboardButton("❌ Close", callback_data="close_ping")]]
 
-    try:
-        await msg.delete()
+    try: await msg.delete()
     except: pass
     
     try:
@@ -69,14 +80,14 @@ async def ping_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=PING_IMG,
             caption=caption,
             reply_markup=InlineKeyboardMarkup(kb),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except Exception as e:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"⚠️ **Image Error:** `{e}`\n\n{caption}",
+            text=f"⚠️ <b>Image Error:</b> <code>{e}</code>\n\n{caption}",
             reply_markup=InlineKeyboardMarkup(kb),
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
 
 # --- STATS COMMAND (OWNER ONLY) ---
@@ -88,18 +99,17 @@ async def stats_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         users = get_total_users()
         groups = get_total_groups()
-        v_keys = len(get_all_voice_keys()) # Voice keys count
     except:
-        users = 0; groups = 0; v_keys = 0
+        users = 0; groups = 0
 
-    text = f"""📊 **DATABASE & AI STATS**
-    
-👤 **Total Users:** `{users}`
-👥 **Total Groups:** `{groups}`
-🎙 **Voice Keys:** `{v_keys} Active`
-    
-⚡ **Server Status:** Running Smoothly
-    """
-    # Stats me bhi Close button de dete hain
+    text = f"""
+<blockquote><b>📊 {to_fancy("DATABASE STATS")}</b></blockquote>
+
+<blockquote>
+<b>👤 ᴛᴏᴛᴀʟ ᴜsᴇʀs :</b> <code>{users}</code>
+<b>👥 ᴛᴏᴛᴀʟ ɢʀᴏᴜᴘs :</b> <code>{groups}</code>
+<b>⚡ sᴇʀᴠᴇʀ :</b> <code>Online</code>
+</blockquote>
+"""
     kb = [[InlineKeyboardButton("🗑 Close Stats", callback_data="close_log")]]
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
