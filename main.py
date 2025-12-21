@@ -125,36 +125,41 @@ async def callback_handler(update, context):
         return
 
         # 4. START MENU & HELP (Separated)
-    
-    # 🔥 START MENU BUTTONS (Photo + Caption Edit)
-if data.startswith((
-    "help_main",
-    "help_market",
-    "help_games",
-    "help_shop",
-    "help_bank",
-    "help_admin",
-    "help_next",
-    "back_home",
-    "start_chat_ai"
-)):
-    await start.start_callback(update, context)
-    return
+    async def callback_handler(update, context):
+    q = update.callback_query
+    await q.answer()
+    data = q.data
+    uid = q.from_user.id
 
-# 🔥 /help COMMAND MENU BUTTONS (Text Message Edit)
-if data.startswith((
-    "help_bank",
-    "help_game",
-    "help_crime",
-    "help_market",
-    "help_shop",
-    "help_tools",
-    "help_admin",
-    "help_home",
-    "close_help"
-)):
-    await help.help_callback(update, context)
-    return
+    # 🔥 START MENU BUTTONS
+    if data.startswith((
+        "help_main",
+        "help_market",
+        "help_games",
+        "help_shop",
+        "help_bank",
+        "help_admin",
+        "help_next",
+        "back_home",
+        "start_chat_ai"
+    )):
+        await start.start_callback(update, context)
+        return
+
+    # 🔥 /help MENU BUTTONS
+    if data.startswith((
+        "help_bank",
+        "help_game",
+        "help_crime",
+        "help_market",
+        "help_shop",
+        "help_tools",
+        "help_admin",
+        "help_home",
+        "close_help"
+    )):
+        await help.help_callback(update, context)
+        return
 
     # 5. BET LOGIC
     if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")):
