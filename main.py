@@ -11,7 +11,8 @@ from config import TELEGRAM_TOKEN
 from database import (
     users_col, codes_col, update_balance, get_balance, 
     check_registered, register_user, update_group_activity, 
-    update_username, update_chat_stats
+    update_username, update_chat_stats,
+    is_user_muted, is_user_banned # 🔥 NEW IMPORTS FOR ENFORCEMENT
 )
 from ai_chat import get_yuki_response, get_mimi_sticker
 from tts import generate_voice 
@@ -42,7 +43,40 @@ async def delete_job(context):
     except:
         pass
 
-# --- CALLBACK HANDLER (FIXED INDENTATION) ---
+# --- ECONOMY COMMANDS (Restored) ---
+
+async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    target = update.effective_user
+    if update.message.reply_to_message:
+        target = update.message.reply_to_message.from_user
+    
+    bal = get_balance(target.id)
+    await update.message.reply_text(f"💳 **{target.first_name}'s Balance:** ₹{bal}", parse_mode=ParseMode.MARKDOWN)
+
+async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    kb = []
+    for k, v in SHOP_ITEMS.items():
+        kb.append([InlineKeyboardButton(f"{v['name']} - ₹{v['price']}", callback_data=f"buy_{k}_{uid}")])
+    kb.append([InlineKeyboardButton("❌ Close", callback_data=f"close_help")])
+    await update.message.reply_text("🛒 **VIP SHOP**", reply_markup=InlineKeyboardMarkup(kb))
+
+async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not context.args: return await update.message.reply_text("⚠️ Usage: `/redeem CODE`")
+    
+    code = context.args[0]
+    data = codes_col.find_one({"code": code})
+    
+    if not data: return await update.message.reply_text("❌ Invalid Code!")
+    if user.id in data["redeemed_by"]: return await update.message.reply_text("⚠️ Already Redeemed!")
+    if len(data["redeemed_by"]) >= data["limit"]: return await update.message.reply_text("❌ Code Limit Reached!")
+
+    update_balance(user.id, data["amount"])
+    codes_col.update_one({"code": code}, {"$push": {"redeemed_by": user.id}})
+    await update.message.reply_text(f"🎉 Redeemed ₹{data['amount']}!")
+
+# --- CALLBACK HANDLER ---
 async def callback_handler(update, context):
     q = update.callback_query
     data = q.data
@@ -63,7 +97,7 @@ async def callback_handler(update, context):
         await wordseek.wordseek_callback(update, context)
         return
 
-    # 4. HELP & START MENU (Separated)
+    # 4. HELP & START MENU
     if data.startswith("help_"):
         await help.help_callback(update, context)
         return
@@ -84,12 +118,9 @@ async def callback_handler(update, context):
     # 7. REGISTRATION & SHOP
     if data.startswith("reg_start_"):
         target_id = int(data.split("_")[2])
-        if uid != target_id: 
-            return await q.answer("Not for you!", show_alert=True)
-        if register_user(uid, q.from_user.first_name): 
-            await q.edit_message_text("✅ Registered!")
-        else:
-            await q.answer("Already registered!")
+        if uid != target_id: return await q.answer("Not for you!", show_alert=True)
+        if register_user(uid, q.from_user.first_name): await q.edit_message_text("✅ Registered!")
+        else: await q.answer("Already registered!")
         return
 
     if data.startswith("buy_"):
@@ -103,14 +134,33 @@ async def callback_handler(update, context):
         await q.answer(f"Bought {item['name']}!")
         await q.message.delete()
         return
+    
+    # 8. REVIVE (From pay.py)
+    if data.startswith("revive_"):
+        await pay.revive_callback(update, context)
+        return
 
-# --- MESSAGE HANDLER (AI & VOICE) ---
+# --- MESSAGE HANDLER (ENFORCEMENT, AI & VOICE) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message: return
     user = update.effective_user
     chat = update.effective_chat
     
-    # 1. ANTI-SPAM
+    # 🚨 1. ENFORCEMENT (BAN & MUTE CHECK) 🚨
+    if chat.type in ["group", "supergroup"] and not user.is_bot:
+        # Check if Banned
+        if is_user_banned(chat.id, user.id):
+            try: await update.message.delete()
+            except: pass
+            return # Stop processing
+            
+        # Check if Muted
+        if is_user_muted(chat.id, user.id):
+            try: await update.message.delete()
+            except: pass
+            return # Stop processing
+
+    # 2. ANTI-SPAM
     if not user.is_bot:
         status = check_spam(user.id)
         if status == "BLOCKED":
@@ -118,24 +168,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif status == False: return
 
-    # 2. DB UPDATE & STATS
+    # 3. DB UPDATE & STATS
     update_username(user.id, user.first_name)
     if chat.type in ["group", "supergroup"] and not user.is_bot:
         update_chat_stats(chat.id, user.id, user.first_name)
         update_group_activity(chat.id, chat.title)
 
-    # 3. ADMIN & WORD GUESS
+    # 4. ADMIN & WORD GUESS
     if await admin.handle_admin_input(update, context): return
     await wordseek.handle_word_guess(update, context)
 
-    # 4. STICKER LOGIC
+    # 5. STICKER LOGIC
     if update.message.sticker:
         if chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or random.random() < 0.2:
             sticker_id = await get_mimi_sticker(context.bot)
             if sticker_id: await update.message.reply_sticker(sticker_id)
         return
 
-    # 5. TEXT & VOICE AI
+    # 6. TEXT & VOICE AI
     text = update.message.text
     if not text: return
 
@@ -168,11 +218,15 @@ def main():
     keep_alive()
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Handler Registration
+    # Core Commands
     app.add_handler(CommandHandler("start", start.start))
     app.add_handler(CommandHandler("help", help.help_command))
     app.add_handler(CommandHandler("admin", admin.admin_panel))
-    app.add_handler(CommandHandler("bal", admin.admin_panel)) # Optional balance alias
+    
+    # Economy Commands (Restored)
+    app.add_handler(CommandHandler("bal", balance_cmd))
+    app.add_handler(CommandHandler("redeem", redeem_code))
+    app.add_handler(CommandHandler("shop", shop_menu))
     
     # Leaderboard & Stats
     app.add_handler(CommandHandler("top", leaderboard.user_leaderboard))
@@ -180,11 +234,22 @@ def main():
     app.add_handler(CommandHandler("stats", logger.stats_bot))
     app.add_handler(CommandHandler("ping", logger.ping_bot))
     
-    # Games & Economy
+    # Games & Economy Modules
     app.add_handler(CommandHandler("bet", bet.bet_menu))
     app.add_handler(CommandHandler("new", wordseek.start_wordseek))
     app.add_handler(CommandHandler("bank", bank.bank_info))
+    app.add_handler(CommandHandler("deposit", bank.deposit))
+    app.add_handler(CommandHandler("withdraw", bank.withdraw))
+    app.add_handler(CommandHandler("loan", bank.take_loan))
+    app.add_handler(CommandHandler("payloan", bank.repay_loan))
     
+    # Pay & RPG
+    app.add_handler(CommandHandler("pay", pay.pay_user))
+    app.add_handler(CommandHandler("rob", pay.rob_user))
+    app.add_handler(CommandHandler("kill", pay.kill_user))
+    app.add_handler(CommandHandler("protect", pay.protect_user))
+    app.add_handler(CommandHandler("alive", pay.check_status))
+
     # Callback Handlers
     app.add_handler(CallbackQueryHandler(callback_handler))
     
@@ -193,11 +258,15 @@ def main():
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, events.track_leave))
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^[\./]crank'), chatstat.show_leaderboard))
     
-    # Group Admin Tools
+    # Group Admin Tools (Regex)
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]id$'), grouptools.get_id))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]warn$'), grouptools.warn_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]mute$'), grouptools.mute_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]unmute$'), grouptools.unmute_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]ban$'), grouptools.ban_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]unban$'), grouptools.unban_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]kick$'), grouptools.kick_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]pin$'), grouptools.pin_message))
     
     # Message Logic (AI)
     app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
