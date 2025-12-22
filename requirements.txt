@@ -1,11 +1,10 @@
 python-telegram-bot>=21.0
 pymongo>=4.6
 flask>=3.0
-# Voice call library - critical fix
-py-tgcalls>=2.0.0
-pyrogram>=2.0.0
+# CRITICAL: Pin these exact versions for compatibility
+py-tgcalls==3.0.0.dev24  # This is a stable development version with AudioQuality
+pyrogram==2.0.106
 tgcrypto>=1.2.5
-# Other dependencies
 yt-dlp>=2024.7
 Pillow>=10.3
 google-genai>=0.3.0
