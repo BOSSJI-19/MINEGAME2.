@@ -30,6 +30,9 @@ from bank import check_balance
 # 🔥 Import Anti-Spam (Old Global Spam)
 from antispam import check_spam
 
+# 🔥 Import Word Grid Game
+import wordgrid  # <-- Add this
+
 # --- FLASK SERVER ---
 app = Flask('')
 @app.route('/')
@@ -99,7 +102,7 @@ async def callback_handler(update, context):
     if data == "open_games":
         await q.answer()
         kb = [[InlineKeyboardButton("🔙 Back", callback_data="back_home")]]
-        msg = "🎮 **GAME MENU**\n\n🎲 `/bet` - Bomb Game\n🔠 `/new` - Word Seek\n❌ `/zero` - Tic Tac Toe\n💰 `/invest` - Stock Market"
+        msg = "🎮 **GAME MENU**\n\n🎲 `/bet` - Bomb Game\n🔠 `/new` - Word Seek\n🔠 `/wordgrid` - Word Grid\n❌ `/zero` - Tic Tac Toe\n💰 `/invest` - Stock Market"
         await q.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
@@ -173,6 +176,16 @@ async def callback_handler(update, context):
     if data.startswith("revive_"):
         await pay.revive_callback(update, context)
         return
+        
+    # 🔥 11. WORD GRID GAME (NEW)
+    if data == "giveup_wordgrid":
+        await wordgrid.give_up(update, context)
+        return
+        
+    # 🔥 12. WORD GRID LETTER SELECTION
+    if data.startswith("grid_"):
+        await wordgrid.grid_callback(update, context)
+        return
 
 # --- MESSAGE HANDLER ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,8 +231,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 4. ADMIN & WORD GUESS
     if await admin.handle_admin_input(update, context): return
     await wordseek.handle_word_guess(update, context)
+    
+    # 🔥 5. WORD GRID WORD GUESS (NEW)
+    await wordgrid.handle_grid_guess(update, context)  # <-- Add this
 
-    # 5. STICKER REPLY
+    # 6. STICKER REPLY
     if update.message.sticker:
         # 20% Chance to reply sticker in Group OR Always in Private (unless handled by AI)
         if chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or random.random() < 0.2:
@@ -227,7 +243,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if sticker_id: await update.message.reply_sticker(sticker_id)
         return
 
-    # 6. TEXT & VOICE AI
+    # 7. TEXT & VOICE AI
     text = update.message.text
     if not text: return
 
@@ -291,6 +307,7 @@ def main():
     # Games & Market
     app.add_handler(CommandHandler("bet", bet.bet_menu))
     app.add_handler(CommandHandler("new", wordseek.start_wordseek))
+    app.add_handler(CommandHandler("wordgrid", wordgrid.start_wordgrid))  # <-- Add this
     app.add_handler(CommandHandler("zero", tictactoe.start_ttt))
     app.add_handler(CommandHandler("market", group.market_info))
     app.add_handler(CommandHandler("invest", group.invest))
