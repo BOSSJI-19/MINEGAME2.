@@ -180,16 +180,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    # 🔥 0. DM/STICKER SPAM PROTECTION (Priority Check)
-    # Ye check sabse pehle hoga. Agar spam hai to return kar denge.
+    # 🔥 0. DM/STICKER SPAM PROTECTION (Strict Mode)
+    # Ye check sabse pehle hoga. 
     if chat.type == "private":
         spam_status = dmspam.check_spam(user.id)
         
         if spam_status == "BLOCKED":
-            return # Ignore user completely (No reply, No sticker)
+            # Console me print karega taaki aapko pata chale
+            print(f"🚫 Ignoring Spam from {user.first_name}") 
+            return # Ignore user completely (No reply)
             
         elif spam_status == "NEW_BLOCK":
-            await update.message.reply_text("🚫 **Stop Spamming!**\nBot has blocked you for 5 minutes.")
+            await update.message.reply_text("🚫 **Spam mat kar bhai!**\n5 minute ke liye block kiya ja raha hai.")
             return # Block message bhej ke return
 
     # 1. ENFORCEMENT (Group Bans/Mutes)
