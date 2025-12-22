@@ -9,4 +9,5 @@ edge-tts
 Pillow
 yt-dlp
 pyrogram
-pytgcalls
+tgcrypto
+py-tgcalls
