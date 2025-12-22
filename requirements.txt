@@ -7,3 +7,6 @@ psutil
 pytz
 edge-tts
 Pillow
+yt-dlp
+pyrogram
+pytgcalls
