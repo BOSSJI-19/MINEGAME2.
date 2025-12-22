@@ -10,6 +10,6 @@ Pillow==11.0.0
 yt-dlp==2025.01.01
 tgcrypto==1.2.5
 
-# voice + MTProto stack
+# MTProto + voice
 pyrogram==1.4.16
 py-tgcalls==0.8.6
