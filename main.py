@@ -17,14 +17,17 @@ from database import (
 from ai_chat import get_yuki_response, get_mimi_sticker
 from tts import generate_voice 
 
-# MODULES (Added couple here)
+# MODULES
 import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events, info, tictactoe, couple
+
+# 🔥 Import New DM Spam Module
+import dmspam 
 
 # 🔥 Bank Updated Import
 import bank 
 from bank import check_balance 
 
-# 🔥 Import Anti-Spam
+# 🔥 Import Anti-Spam (Old Global Spam)
 from antispam import check_spam
 
 # --- FLASK SERVER ---
@@ -177,14 +180,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    # 1. ENFORCEMENT
+    # 🔥 0. DM/STICKER SPAM PROTECTION (Priority Check)
+    # Ye check sabse pehle hoga. Agar spam hai to return kar denge.
+    if chat.type == "private":
+        spam_status = dmspam.check_spam(user.id)
+        
+        if spam_status == "BLOCKED":
+            return # Ignore user completely (No reply, No sticker)
+            
+        elif spam_status == "NEW_BLOCK":
+            await update.message.reply_text("🚫 **Stop Spamming!**\nBot has blocked you for 5 minutes.")
+            return # Block message bhej ke return
+
+    # 1. ENFORCEMENT (Group Bans/Mutes)
     if chat.type in ["group", "supergroup"] and not user.is_bot:
         if is_user_banned(chat.id, user.id) or is_user_muted(chat.id, user.id):
             try: await update.message.delete()
             except: pass
             return
 
-    # 2. ANTI-SPAM
+    # 2. GLOBAL ANTI-SPAM (Old logic, keep if needed for groups)
     if not user.is_bot:
         status = check_spam(user.id)
         if status == "BLOCKED":
@@ -202,8 +217,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await admin.handle_admin_input(update, context): return
     await wordseek.handle_word_guess(update, context)
 
-    # 5. STICKER
+    # 5. STICKER REPLY
     if update.message.sticker:
+        # 20% Chance to reply sticker in Group OR Always in Private (unless handled by AI)
         if chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or random.random() < 0.2:
             sticker_id = await get_mimi_sticker(context.bot)
             if sticker_id: await update.message.reply_sticker(sticker_id)
@@ -257,7 +273,7 @@ def main():
     app.add_handler(CommandHandler("info", info.user_info))
     app.add_handler(CommandHandler("love", info.love_calculator))
     app.add_handler(CommandHandler("stupid", info.stupid_meter))
-    app.add_handler(CommandHandler("couple", couple.couple_check)) # 🔥 Added Couple Command
+    app.add_handler(CommandHandler("couple", couple.couple_check))
     
     # Economy
     app.add_handler(CommandHandler("bal", check_balance))
