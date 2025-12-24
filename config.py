@@ -4,7 +4,7 @@ import os
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") 
 MONGO_URL = os.getenv("MONGO_URL")
 OWNER_ID = 7453179290  # Tumhara (Owner) Telegram ID
-OWNER_USERNAME = t.meTHE_BOSS_JI
+OWNER_USERNAME = "@THE_BOSS_JI"
 
 # 🤖 AI CHAT CONFIG
 OWNER_NAME = "BOSS JI"  # Yahan apna naam likho (Yuki tumhe is naam se bulayegi)
