@@ -4,7 +4,8 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
-from database import check_registered, register_user
+# 🔥 Import get_logger_group here
+from database import check_registered, register_user, get_logger_group 
 from config import OWNER_ID, OWNER_NAME
 # 🔥 Import Random Sticker Logic
 from ai_chat import get_mimi_sticker
@@ -104,7 +105,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_registered(user.id):
         register_user(user.id, user.first_name)
         is_new_user = True
-
+        
+    # --- 🔥 4. LOGGER LOGIC (ADDED HERE) 🔥 ---
+    # Har start par Logger Group me msg jayega
+    logger_id = get_logger_group()
+    if logger_id:
+        try:
+            log_msg = (
+                f"📢 <b>USER STARTED BOT</b>\n\n"
+                f"👤 <b>User:</b> {user.mention_html()}\n"
+                f"🆔 <b>ID:</b> <code>{user.id}</code>\n"
+                f"🔗 <b>Username:</b> @{user.username if user.username else 'No Username'}"
+            )
+            # Log message HTML format me bhejenge
+            await context.bot.send_message(chat_id=logger_id, text=log_msg, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            print(f"⚠️ Logger Error: {e}")
+            
     # --- 4. BUTTONS ---
     keyboard = [
         [
