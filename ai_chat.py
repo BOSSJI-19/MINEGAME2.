@@ -77,8 +77,6 @@ def get_yuki_response(user_id, user_text, user_name):
         f"Style: Short reply (Max 15 words), Emojis use kar. "
         f"\n\nChat History:\n{conversation_context}\n\n"
         f"User ({user_name}): {user_text}\n"
-        f"- tera group ya home ye hai join link https://t.me/+aw9rUJoO2JYwNjQ1."
-        f"- tera group name chilvibe hai "
         f"aniya:"
     )
 
