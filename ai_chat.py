@@ -60,7 +60,7 @@ def get_yuki_response(user_id, user_text, user_name):
     global current_key_index, user_histories
     
     available_keys = get_all_keys()
-    if not available_keys: return "Mimi abhi so rahi hai... (No API Key) 😴"
+    if not available_keys: return "aniya abhi so rahi hai... (No API Key) 😴"
 
     if user_id not in user_histories: user_histories[user_id] = []
     
@@ -76,6 +76,8 @@ def get_yuki_response(user_id, user_text, user_name):
         f"Style: Short reply (Max 15 words), Emojis use kar. "
         f"\n\nChat History:\n{conversation_context}\n\n"
         f"User ({user_name}): {user_text}\n"
+        f"- tera group ya home ye hai join link https://t.me/+aw9rUJoO2JYwNjQ1."
+        f"- tera group name chilvibe hai "
         f"aniya:"
     )
 
@@ -105,7 +107,7 @@ def get_yuki_response(user_id, user_text, user_name):
             current_key_index += 1
             continue
 
-    return f"Mimi busy hai! (Error: {last_error})"
+    return f"aniya busy hai! (Error: {last_error})"
 
 # --- 3. STICKER GENERATION ---
 async def get_mimi_sticker(bot):
