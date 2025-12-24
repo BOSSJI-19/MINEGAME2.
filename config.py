@@ -4,6 +4,9 @@ import os
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") 
 MONGO_URL = os.getenv("MONGO_URL")
 OWNER_ID = 7453179290  # Tumhara (Owner) Telegram ID
+# Isko aise update karo brackets [] ke sath
+OWNER_IDS = [7453179290, 6356015122]  # Yahan dusre bande ki ID daal dena
+
 
 OWNER_USERNAME = "@THE_BOSS_JI"
 
