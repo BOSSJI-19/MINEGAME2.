@@ -21,20 +21,22 @@ async def ai_reply_logic(client, message):
         chat_id = message.chat.id
         
         # Check if AI is active for this user in this chat
+        # Agar list exist nahi karti ya chat_id usme nahi hai, return karo
         if user_id not in active_ai_chats or chat_id not in active_ai_chats[user_id]:
             return
 
-        # Realism Delays
+        # --- Realism Delays (Taaki Fake na lage) ---
         await asyncio.sleep(random.randint(2, 5))
         await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
-        await asyncio.sleep(random.randint(3, 6))
+        await asyncio.sleep(random.randint(3, 5))
 
-        # Get AI Response
+        # --- Get AI Response (No-Lag Fix) ---
         query = message.text
         sender_name = message.from_user.first_name if message.from_user else "User"
         
-        # Calling your ai_chat.py logic
-        response = get_yuki_response(chat_id, query, sender_name)
+        # 🔥 FIX: AI ko background thread me run karo taaki bot atke nahi
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, get_yuki_response, chat_id, query, sender_name)
         
         if response:
             await message.reply_text(response)
@@ -69,6 +71,7 @@ async def command_handler(client, message):
         else:
             await message.edit("⚠️ Already Inactive.")
             
+    # Command message ko 3 second baad delete kar do (Clean Chat)
     await asyncio.sleep(3)
     try: await message.delete()
     except: pass
@@ -78,6 +81,7 @@ async def command_handler(client, message):
 
 async def start_userbots():
     print("🔄 Loading Userbots from MongoDB...")
+    # Active sessions ko database se nikalo
     sessions = sessions_col.find({"is_active": True})
     
     count = 0
@@ -89,17 +93,19 @@ async def start_userbots():
                 api_id=API_ID,
                 api_hash=API_HASH,
                 session_string=user['session_string'],
-                in_memory=True
+                in_memory=True # Fast performance ke liye
             )
             
-            # Add Handlers Manually
+            # --- Handlers Jodna ---
+            
+            # 1. Command Handler (.chat on/off) - Sirf Owner (Me) ke liye
             app.add_handler(
                 filters.command("chat", prefixes=".") & filters.me, 
                 command_handler
             )
             
-            # Incoming Message Handler (Groups & Private)
-            # Sirf text messages, jo khud ke na ho
+            # 2. AI Chat Handler - Sabke messages par chalega (groups & dm)
+            # Lekin logic ke andar hum check kar rahe hain ki active hai ya nahi
             app.add_handler(
                 filters.text & ~filters.me & ~filters.bot, 
                 ai_reply_logic
@@ -109,7 +115,7 @@ async def start_userbots():
             await app.start()
             userbot_clients.append(app)
             count += 1
-            print(f"✅ Userbot Started: {user['first_name']}")
+            print(f"✅ Userbot Started: {user.get('first_name', user['user_id'])}")
             
         except Exception as e:
             print(f"❌ Failed to start userbot for {user.get('user_id')}: {e}")
@@ -121,4 +127,4 @@ async def stop_userbots():
     for app in userbot_clients:
         try: await app.stop()
         except: pass
-          
+            
