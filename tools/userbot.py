@@ -4,6 +4,8 @@ import re
 from pyrogram import Client, filters, enums
 from pyrogram.handlers import MessageHandler
 from config import API_ID, API_HASH
+from pyrogram.raw.functions.messages import GetStickerSet
+from pyrogram.raw.types import InputStickerSetShortName
 
 # 🔥 IMPORTS UPDATE:
 # 1. Main DB se sirf Sessions lo
@@ -87,13 +89,17 @@ async def add_sticker_command(client, message):
         await message.edit(f"🔄 **Verifying:** `{pack_shortname}`...")
         
         try:
-            sticker_set = await client.get_sticker_set(pack_shortname)
-            if not sticker_set:
-                await message.edit("❌ **Invalid Pack!** Telegram par nahi mila.")
-                return
-        except:
-             await message.edit("❌ **Error:** Ye Pack valid nahi hai.")
-             return
+    await client.invoke(
+        GetStickerSet(
+            stickerset=InputStickerSetShortName(
+                short_name=pack_shortname
+            ),
+            hash=0
+        )
+    )
+except Exception:
+    await message.edit("❌ **Invalid Sticker Pack!** Telegram par nahi mila.")
+    return
 
         # Tools DB me save karo
         add_sticker_pack(pack_shortname)
@@ -145,17 +151,26 @@ async def ai_reply_logic(client, message):
         reply_context = "" 
 
         # A. STICKER HANDLING
-        if message.sticker:
-            if not is_group:
-                await asyncio.sleep(random.randint(2, 4))
-                await send_random_sticker(client, chat_id)
-                return
-            
-            if is_group and message.reply_to_message and message.reply_to_message.from_user.id == my_id:
-                await asyncio.sleep(random.randint(2, 4))
-                await send_random_sticker(client, chat_id)
-                return
-            return 
+if message.sticker:
+
+    # 🔹 Private chat → always reply with sticker
+    if not is_group:
+        await asyncio.sleep(random.randint(2, 4))
+        await send_random_sticker(client, chat_id)
+        return
+
+    # 🔹 Group: reply only if user replied to YOU
+    if (
+        is_group
+        and message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.id == my_id
+    ):
+        await asyncio.sleep(random.randint(2, 4))
+        await send_random_sticker(client, chat_id)
+        return
+
+    return
 
         # B. TEXT HANDLING
         if not message.text: return
