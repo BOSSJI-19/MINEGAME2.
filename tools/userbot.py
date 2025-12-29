@@ -4,7 +4,7 @@ import re
 from pyrogram import Client, filters, enums
 from pyrogram.handlers import MessageHandler
 from config import API_ID, API_HASH
-from database import db
+from database import db, get_sticker_packs # 🔥 Database se packs lene ke liye import kiya
 from ai_chat import get_yuki_response
 
 # --- MONGODB COLLECTIONS ---
@@ -21,20 +21,34 @@ async def load_active_chats():
     global active_ai_chats
     all_docs = active_chats_col.find({})
     for doc in all_docs:
-        # DB se owner_id load ho raha hai (Userbot ka ID)
         owner_id = doc["owner_id"]
         chat_id = doc["chat_id"]
         if owner_id not in active_ai_chats: active_ai_chats[owner_id] = []
         if chat_id not in active_ai_chats[owner_id]: active_ai_chats[owner_id].append(chat_id)
 
+# 🔥 NEW STICKER LOGIC (Database Connected)
 async def send_random_sticker(client, chat_id):
     try:
-        packs = ["yurucamp_lay", "Menhera_chan_2", "Komi_san", "Anya_SpyXfamily", "Honkai_Star_Rail"]
+        # 1. Database se Packs nikalo (Jaisa Main Bot karta hai)
+        packs = get_sticker_packs()
+        
+        # 2. Agar Database khali hai, toh Fallback packs use karo
+        if not packs:
+            packs = ["Anya_SpyXfamily"]
+        
+        # 3. Random Pack select karo
         pack_shortname = random.choice(packs)
+        
+        # 4. Pyrogram se Sticker Set fetch karo
         sticker_set = await client.get_sticker_set(pack_shortname)
+        
         if sticker_set and sticker_set.stickers:
-            await client.send_sticker(chat_id, random.choice(sticker_set.stickers).file_id)
-    except: pass
+            sticker = random.choice(sticker_set.stickers)
+            await client.send_sticker(chat_id, sticker.file_id)
+            
+    except Exception as e:
+        # print(f"Sticker Error: {e}") 
+        pass
 
 def clean_text(text):
     if not text: return ""
@@ -46,7 +60,7 @@ def clean_text(text):
 async def ai_reply_logic(client, message):
     try:
         me = await client.get_me()
-        my_id = me.id  # 🔥 NAME CHANGE: Ab ye 'my_id' hai (Userbot ki khud ki ID)
+        my_id = me.id
         chat_id = message.chat.id
         
         # 1. Check Active Status
@@ -61,12 +75,13 @@ async def ai_reply_logic(client, message):
 
         # Case A: STICKER Handling
         if message.sticker:
+            # DM me hamesha sticker bhejo
             if not is_group:
                 await asyncio.sleep(random.randint(2, 4))
                 await send_random_sticker(client, chat_id)
                 return
             
-            # Group: Agar kisi ne MERE message par reply karke sticker bheja
+            # Group me sirf tab jab Reply ME ho
             if is_group and message.reply_to_message and message.reply_to_message.from_user.id == my_id:
                 await asyncio.sleep(random.randint(2, 4))
                 await send_random_sticker(client, chat_id)
@@ -77,18 +92,17 @@ async def ai_reply_logic(client, message):
         if not message.text: return
 
         if not is_group:
-            should_reply = True # DM me bindass bolo
+            should_reply = True 
         else:
             # GROUP Logic:
             
-            # Rule 1: Reply to ME (Userbot ko reply kiya)
+            # Rule 1: Reply to ME
             if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == my_id:
                 should_reply = True
-                # Context Yaad Rakhna:
                 if message.reply_to_message.text:
                     reply_context = f" (Context: User replied to your message: '{message.reply_to_message.text}')"
 
-            # Rule 2: Mention/Tag (@MyUsername)
+            # Rule 2: Mention/Tag
             elif message.entities:
                 for entity in message.entities:
                     if entity.type == enums.MessageEntityType.MENTION and me.username and f"@{me.username}" in message.text:
@@ -98,7 +112,7 @@ async def ai_reply_logic(client, message):
                         should_reply = True
                         break
             
-            # Rule 3: Name Trigger (Aniya, Bot)
+            # Rule 3: Name Trigger
             if not should_reply:
                 text_lower = message.text.lower()
                 triggers = ["aniya", "bot", "baby", me.first_name.lower()]
@@ -113,7 +127,6 @@ async def ai_reply_logic(client, message):
         
         await asyncio.sleep(random.randint(2, 5))
 
-        # AI ko Query + Context bhejo
         query = message.text + reply_context 
         sender_name = message.from_user.first_name if message.from_user else "User"
         
@@ -123,7 +136,6 @@ async def ai_reply_logic(client, message):
         if response:
             final_reply = clean_text(response)
             if final_reply: 
-                # Reply karke jawab do
                 if message.reply_to_message:
                     await message.reply_text(final_reply, quote=True)
                 else:
@@ -183,4 +195,4 @@ async def stop_userbots():
     for app in userbot_clients:
         try: await app.stop()
         except: pass
-
+        
