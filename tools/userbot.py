@@ -1,6 +1,8 @@
 import asyncio
 import random
 from pyrogram import Client, filters, enums
+# 🔥 FIX: MessageHandler import karna jaruri hai manual adding ke liye
+from pyrogram.handlers import MessageHandler 
 from config import API_ID, API_HASH
 from database import db
 from ai_chat import get_yuki_response
@@ -21,20 +23,22 @@ async def ai_reply_logic(client, message):
         chat_id = message.chat.id
         
         # Check if AI is active for this user in this chat
-        # Agar list exist nahi karti ya chat_id usme nahi hai, return karo
         if user_id not in active_ai_chats or chat_id not in active_ai_chats[user_id]:
             return
 
-        # --- Realism Delays (Taaki Fake na lage) ---
+        # --- Realism Delays ---
         await asyncio.sleep(random.randint(2, 5))
-        await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
+        try:
+            await client.send_chat_action(chat_id, enums.ChatAction.TYPING)
+        except:
+            pass # Agar permission na ho to crash na kare
         await asyncio.sleep(random.randint(3, 5))
 
         # --- Get AI Response (No-Lag Fix) ---
         query = message.text
         sender_name = message.from_user.first_name if message.from_user else "User"
         
-        # 🔥 FIX: AI ko background thread me run karo taaki bot atke nahi
+        # 🔥 AI Background Process
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(None, get_yuki_response, chat_id, query, sender_name)
         
@@ -54,7 +58,6 @@ async def command_handler(client, message):
 
     action = cmd[1].lower()
     
-    # Initialize list if not present
     if user_id not in active_ai_chats: active_ai_chats[user_id] = []
 
     if action == "on":
@@ -71,7 +74,6 @@ async def command_handler(client, message):
         else:
             await message.edit("⚠️ Already Inactive.")
             
-    # Command message ko 3 second baad delete kar do (Clean Chat)
     await asyncio.sleep(3)
     try: await message.delete()
     except: pass
@@ -81,7 +83,6 @@ async def command_handler(client, message):
 
 async def start_userbots():
     print("🔄 Loading Userbots from MongoDB...")
-    # Active sessions ko database se nikalo
     sessions = sessions_col.find({"is_active": True})
     
     count = 0
@@ -93,22 +94,26 @@ async def start_userbots():
                 api_id=API_ID,
                 api_hash=API_HASH,
                 session_string=user['session_string'],
-                in_memory=True # Fast performance ke liye
+                in_memory=True
             )
             
-            # --- Handlers Jodna ---
+            # --- 🔥 HANDLERS FIX HERE ---
+            # Hum sidha filters pass nahi kar sakte, MessageHandler wrapper chahiye
             
-            # 1. Command Handler (.chat on/off) - Sirf Owner (Me) ke liye
+            # 1. Command Handler (.chat on/off)
             app.add_handler(
-                filters.command("chat", prefixes=".") & filters.me, 
-                command_handler
+                MessageHandler(
+                    command_handler, 
+                    filters.command("chat", prefixes=".") & filters.me
+                )
             )
             
-            # 2. AI Chat Handler - Sabke messages par chalega (groups & dm)
-            # Lekin logic ke andar hum check kar rahe hain ki active hai ya nahi
+            # 2. AI Chat Handler
             app.add_handler(
-                filters.text & ~filters.me & ~filters.bot, 
-                ai_reply_logic
+                MessageHandler(
+                    ai_reply_logic,
+                    filters.text & ~filters.me & ~filters.bot
+                )
             )
 
             # Start Client
