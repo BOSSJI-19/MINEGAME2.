@@ -1,6 +1,7 @@
 import random
 import os
-import importlib # 🔥 Added for Auto-Loader
+import asyncio # 🔥 Added for Async Tasks
+import importlib 
 from threading import Thread
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -19,14 +20,22 @@ from database import (
 from ai_chat import get_yuki_response, get_mimi_sticker
 from tts import generate_voice 
 
+# 🔥 IMPORT USERBOT STARTER
+try:
+    from tools.userbot import start_userbots
+except ImportError:
+    print("⚠️ tools/userbot.py nahi mila! Userbot features kaam nahi karenge.")
+    async def start_userbots(): pass # Dummy function taaki error na aaye
+
 # MODULES (OLD ONES - Hardcoded)
-import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events, info, tictactoe, couple
-import livetime  
-import dmspam 
-import bank 
-from bank import check_balance 
-from antispam import check_spam
-import wordgrid 
+# Make sure ye sab files wahi folder me ho, warna error aayega
+try:
+    import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events, info, tictactoe, couple
+    import livetime, dmspam, bank, wordgrid
+    from bank import check_balance 
+    from antispam import check_spam
+except ImportError as e:
+    print(f"⚠️ Warning: Kuch modules missing hain: {e}")
 
 # --- FLASK SERVER ---
 app = Flask('')
@@ -42,91 +51,59 @@ SHOP_ITEMS = {
     "rich":  {"name": "💸 Rich", "price": 100000}
 }
 
-async def delete_job(context):
-    try: await context.bot.delete_message(context.job.chat_id, context.job.data)
-    except: pass
-
-# --- 🔌 AUTO LOADER FUNCTION (NEW) ---
+# --- 🔌 AUTO LOADER FUNCTION ---
 def load_plugins(application: Application):
-    """
-    Tools folder ke andar jitni bhi python files hain, 
-    unko auto-load karega agar unme 'register_handlers' function hua.
-    """
     plugin_dir = "tools"
-    
-    # Check agar folder nahi hai toh bana do
     if not os.path.exists(plugin_dir):
-        try:
-            os.makedirs(plugin_dir)
-            print(f"📁 Created '{plugin_dir}' directory.")
-        except:
-            pass
+        try: os.makedirs(plugin_dir); print(f"📁 Created '{plugin_dir}' directory.")
+        except: pass
         return
 
-    # Folder ke andar ki files scan karo
-    path_list = [
-        f for f in os.listdir(plugin_dir) 
-        if f.endswith(".py") and f != "__init__.py"
-    ]
-
+    path_list = [f for f in os.listdir(plugin_dir) if f.endswith(".py") and f != "__init__.py"]
     print(f"🔌 Loading {len(path_list)} plugins from '{plugin_dir}'...")
 
     for file in path_list:
-        module_name = file[:-3]  # .py hatao
+        module_name = file[:-3]
         try:
-            # Dynamic Import
             module = importlib.import_module(f"{plugin_dir}.{module_name}")
-            
-            # Har file me 'register_handlers' function dhundo
             if hasattr(module, "register_handlers"):
                 module.register_handlers(application)
                 print(f"  ✅ Loaded: {module_name}")
             else:
-                print(f"  ⚠️ Skipped: {module_name} (No 'register_handlers' found)")
-        
+                print(f"  ⚠️ Skipped: {module_name} (No 'register_handlers')")
         except Exception as e:
             print(f"  ❌ Failed to load {module_name}: {e}")
 
-# --- STARTUP MESSAGE FUNCTION ---
+# --- STARTUP MESSAGE & USERBOT LAUNCHER ---
 async def on_startup(application: Application):
     print(f"🚀 {BOT_NAME} IS STARTING...")
     
-    # Logger Logic
+    # 1. Logger Message
     logger_id = get_logger_group()
     if logger_id:
         try:
             me = await application.bot.get_me()
-            username = me.username
-            
-            txt = f"""
-<blockquote><b>{BOT_NAME}ʙᴏᴛ active 🍭</b></blockquote>
-
-<blockquote>
-<b>🤖 ʙᴏᴛ ɴᴀᴍᴇ :</b> {BOT_NAME}
-<b>🆔 ʙᴏᴛ ɪᴅ :</b> <code>{me.id}</code>
-<b>🔗 ᴜsᴇʀɴᴀᴍᴇ :</b> {username}
-</blockquote>
-"""
+            txt = f"<b>{BOT_NAME} Started Successfully! 🟢</b>\n🆔 ID: <code>{me.id}</code>"
             await application.bot.send_message(chat_id=logger_id, text=txt, parse_mode=ParseMode.HTML)
-            print("✅ Startup message sent to Logger!")
         except Exception as e:
-            print(f"⚠️ Failed to send startup message: {e}")
-            
-# --- SHOP MENU ---
-async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.callback_query:
-        uid = update.callback_query.from_user.id
-        msg_func = update.callback_query.message.edit_text 
-    else:
-        uid = update.effective_user.id
-        msg_func = update.message.reply_text
+            print(f"⚠️ Logger Error: {e}")
 
+    # 2. 🔥 START USERBOTS (Background Task)
+    # Ye line tumhare saved sessions ko load karke start karegi
+    print("🔄 Initializing Userbots...")
+    asyncio.create_task(start_userbots())
+
+# --- SHOP & REDEEM HANDLERS ---
+async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    msg_func = update.callback_query.message.edit_text if update.callback_query else update.message.reply_text
+    
     kb = []
     for k, v in SHOP_ITEMS.items():
         kb.append([InlineKeyboardButton(f"{v['name']} - ₹{v['price']}", callback_data=f"buy_{k}_{uid}")])
     kb.append([InlineKeyboardButton("❌ Close", callback_data=f"close_help")])
     
-    await msg_func("🛒 **VIP SHOP**\nBuy special titles here:", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+    await msg_func("🛒 **VIP SHOP**", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
 
 async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -152,67 +129,27 @@ async def callback_handler(update, context):
         except: pass
         return
 
-    if data == "open_shop":
-        await q.answer()
-        await shop_menu(update, context)
-        return
-    
+    # Routing logic for modules
+    if data == "open_shop": await q.answer(); await shop_menu(update, context); return
     if data == "open_games":
         await q.answer()
         kb = [[InlineKeyboardButton("🔙 Back", callback_data="back_home")]]
-        msg = "🎮 **GAME MENU**\n\n🎲 `/bet` - Bomb Game\n🔠 `/new` - Word Seek\n🔠 `/wordgrid` - Word Grid\n❌ `/zero` - Tic Tac Toe\n💰 `/invest` - Stock Market"
-        await q.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
-        return
+        msg = "🎮 **GAME MENU**\n/bet, /new, /wordgrid, /zero, /invest"
+        await q.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN); return
 
-    if data == "open_ranking":
-        await q.answer()
-        await leaderboard.user_leaderboard(update, context)
-        return
-
-    if data == "open_commands":
-        await q.answer()
-        await help.help_callback(update, context)
-        return
+    if data == "open_ranking": await q.answer(); await leaderboard.user_leaderboard(update, context); return
+    if data == "open_commands": await q.answer(); await help.help_callback(update, context); return
+    if data == "back_home": await q.answer(); await start.start_callback(update, context); return
     
-    if data == "back_home":
-        await q.answer()
-        await start.start_callback(update, context)
-        return
-
-    if data.startswith(("help_", "mod_")): 
-        await help.help_callback(update, context)
-        return
-        
-    if data.startswith(("start_", "st_")):
-        await start.start_callback(update, context)
-        return
-
-    if data.startswith("admin_"):
-        await admin.admin_callback(update, context)
-        return
-
-    if data.startswith(("wrank_", "new_wordseek_", "close_wrank", "end_wordseek")):
-        await wordseek.wordseek_callback(update, context)
-        return
-
-    if data.startswith(("rank_", "hide_rank")):
-        await chatstat.rank_callback(update, context)
-        return
-        
-    if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")):
-        await bet.bet_callback(update, context)
-        return
-
-    if data.startswith("ttt_"):
-        await tictactoe.ttt_callback(update, context)
-        return
-
-    if data.startswith("reg_start_"):
-        if uid != int(data.split("_")[2]): return await q.answer("Not for you!", show_alert=True)
-        if register_user(uid, q.from_user.first_name): await q.edit_message_text("✅ Registered!")
-        else: await q.answer("Already registered!")
-        return
-
+    # Pattern matching for modules
+    if data.startswith(("help_", "mod_")): await help.help_callback(update, context); return
+    if data.startswith(("start_", "st_")): await start.start_callback(update, context); return
+    if data.startswith("admin_"): await admin.admin_callback(update, context); return
+    if data.startswith(("wrank_", "new_wordseek_", "close_wrank", "end_wordseek")): await wordseek.wordseek_callback(update, context); return
+    if data.startswith(("rank_", "hide_rank")): await chatstat.rank_callback(update, context); return
+    if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")): await bet.bet_callback(update, context); return
+    if data.startswith("ttt_"): await tictactoe.ttt_callback(update, context); return
+    
     if data.startswith("buy_"):
         parts = data.split("_")
         if uid != int(parts[2]): return await q.answer("Not for you!", show_alert=True)
@@ -220,75 +157,51 @@ async def callback_handler(update, context):
         if get_balance(uid) < item["price"]: return await q.answer("No Money!", show_alert=True)
         update_balance(uid, -item["price"])
         users_col.update_one({"_id": uid}, {"$push": {"titles": item["name"]}})
-        await q.answer(f"Bought {item['name']}!")
-        return
-    
-    if data.startswith("revive_"):
-        await pay.revive_callback(update, context)
-        return
-        
-    if data == "giveup_wordgrid":
-        await wordgrid.give_up(update, context)
-        return
-        
-    if data.startswith("grid_"):
-        await wordgrid.grid_callback(update, context)
-        return
+        await q.answer(f"Bought {item['name']}!"); return
 
-    if data == "close_time":
-        await livetime.close_time(update, context)
-        return
+    if data.startswith("revive_"): await pay.revive_callback(update, context); return
+    if data == "giveup_wordgrid": await wordgrid.give_up(update, context); return
+    if data.startswith("grid_"): await wordgrid.grid_callback(update, context); return
+    if data == "close_time": await livetime.close_time(update, context); return
 
-# --- MESSAGE HANDLER ---
+# --- MAIN MESSAGE HANDLER ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message: return
     user = update.effective_user
     chat = update.effective_chat
     
-    # 0. DM SPAM PROTECTION
+    # 0. Protection & Enforcement
     if chat.type == "private":
         spam_status = dmspam.check_spam(user.id)
-        if spam_status == "BLOCKED":
-            print(f"🚫 Ignoring Spam from {user.first_name}") 
-            return 
-        elif spam_status == "NEW_BLOCK":
-            await update.message.reply_text("🚫 **Spam mat kar bhai!**\n5 minute ke liye block kiya ja raha hai.")
-            return 
-
-    # 1. ENFORCEMENT
+        if spam_status in ["BLOCKED", "NEW_BLOCK"]: return
+    
     if chat.type in ["group", "supergroup"] and not user.is_bot:
         if is_user_banned(chat.id, user.id) or is_user_muted(chat.id, user.id):
-            try: await update.message.delete()
+            try: await update.message.delete(); return
             except: pass
-            return
 
-    # 2. GLOBAL ANTI-SPAM
-    if not user.is_bot:
-        status = check_spam(user.id)
-        if status == "BLOCKED":
-            await update.message.reply_text(f"🚫 **Spam Detected!**\n{user.first_name}, blocked for 8 mins.")
-            return
-        elif status == False: return
+    if not user.is_bot and check_spam(user.id) == "BLOCKED":
+        await update.message.reply_text("🚫 Spam Detected! Blocked."); return
 
-    # 3. STATS
+    # 1. Stats
     update_username(user.id, user.first_name)
-    if chat.type in ["group", "supergroup"] and not user.is_bot:
+    if chat.type != "private":
         update_chat_stats(chat.id, user.id, user.first_name)
         update_group_activity(chat.id, chat.title)
 
-    # 4. ADMIN & GAMES
+    # 2. Game Logic
     if await admin.handle_admin_input(update, context): return
     await wordseek.handle_word_guess(update, context)
     await wordgrid.handle_word_guess(update, context)
 
-    # 5. STICKER REPLY
+    # 3. Sticker Logic
     if update.message.sticker:
         if chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or random.random() < 0.2:
             sticker_id = await get_mimi_sticker(context.bot)
             if sticker_id: await update.message.reply_sticker(sticker_id)
         return
 
-    # 6. TEXT & VOICE AI
+    # 4. 🔥 AI TEXT & VOICE LOGIC (Optimized)
     text = update.message.text
     if not text: return
 
@@ -302,7 +215,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wants_voice = any(v in text.lower() for v in voice_triggers)
 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        ai_reply = get_yuki_response(user.id, text, user.first_name)
+        
+        # 🔥 FIX: Run Blocking AI in Executor (Background Thread)
+        # Isse bot lag nahi karega jab tak AI soch raha hai
+        loop = asyncio.get_running_loop()
+        try:
+            ai_reply = await loop.run_in_executor(None, get_yuki_response, user.id, text, user.first_name)
+        except Exception as e:
+            ai_reply = "Dimag kharab ho gaya hai mera! (Error)"
+            print(f"AI Error: {e}")
 
         if wants_voice:
             await context.bot.send_chat_action(chat_id=chat.id, action="record_voice")
@@ -313,9 +234,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     with open(audio_path, 'rb') as voice_file:
                         await update.message.reply_voice(voice=voice_file)
                     os.remove(audio_path)
-                    return
-                except Exception as e:
-                    print(f"Voice Send Error: {e}")
+                except:
                     await update.message.reply_text(ai_reply)
             else:
                 await update.message.reply_text(ai_reply)
@@ -326,10 +245,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     keep_alive()
     
-    # 🔥 Added post_init=on_startup here
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(on_startup).build()
     
-    # --- A. EXISTING HANDLERS (Hardcoded) ---
+    # Handlers Registration
     app.add_handler(CommandHandler("start", start.start))
     app.add_handler(CommandHandler("help", help.help_command))
     app.add_handler(CommandHandler("admin", admin.admin_panel))
@@ -382,6 +300,7 @@ def main():
     
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^[\./]crank'), chatstat.show_leaderboard))
     
+    # Simple Group Tools
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]id$'), grouptools.get_id))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]warn$'), grouptools.warn_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]mute$'), grouptools.mute_user))
@@ -391,10 +310,10 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]kick$'), grouptools.kick_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]pin$'), grouptools.pin_message))
     
-    # --- B. NEW MODULES (TOOLS FOLDER - AUTO LOAD) ---
+    # Auto-Load New Tools (string.py, user_ai.py, etc.)
     load_plugins(app)
 
-    # --- C. MESSAGE HANDLER (LAST PRIORITY) ---
+    # Main Message Handler (Last)
     app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
     
     print(f"🚀 {BOT_NAME} STARTED SUCCESSFULLY!")
@@ -402,4 +321,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                   
+        
