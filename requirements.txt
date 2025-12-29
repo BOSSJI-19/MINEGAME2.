@@ -7,3 +7,7 @@ psutil
 pytz
 edge-tts
 Pillow
+pyrogram
+tgcrypto
+pyromod
+
