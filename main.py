@@ -1,7 +1,7 @@
-import random
+import asyncio
 import os
-import asyncio # 🔥 Added for Async Tasks
-import importlib 
+import importlib
+import random
 from threading import Thread
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -25,10 +25,16 @@ try:
     from tools.userbot import start_userbots
 except ImportError:
     print("⚠️ tools/userbot.py nahi mila! Userbot features kaam nahi karenge.")
-    async def start_userbots(): pass # Dummy function taaki error na aaye
+    async def start_userbots(): pass 
+
+# 🔥 IMPORT CLONE STARTER (Added for persistent clones)
+try:
+    from tools.clone import restart_all_clones
+except ImportError:
+    print("⚠️ tools/clone.py nahi mila! Clone features kaam nahi karenge.")
+    async def restart_all_clones(): pass
 
 # MODULES (OLD ONES - Hardcoded)
-# Make sure ye sab files wahi folder me ho, warna error aayega
 try:
     import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events, info, tictactoe, couple
     import livetime, dmspam, bank, wordgrid
@@ -74,7 +80,7 @@ def load_plugins(application: Application):
         except Exception as e:
             print(f"  ❌ Failed to load {module_name}: {e}")
 
-# --- STARTUP MESSAGE & USERBOT LAUNCHER ---
+# --- STARTUP MESSAGE & LAUNCHERS ---
 async def on_startup(application: Application):
     print(f"🚀 {BOT_NAME} IS STARTING...")
     
@@ -89,9 +95,12 @@ async def on_startup(application: Application):
             print(f"⚠️ Logger Error: {e}")
 
     # 2. 🔥 START USERBOTS (Background Task)
-    # Ye line tumhare saved sessions ko load karke start karegi
     print("🔄 Initializing Userbots...")
     asyncio.create_task(start_userbots())
+
+    # 3. 🔥 START CLONES (Background Task)
+    print("🔄 Initializing Clones...")
+    asyncio.create_task(restart_all_clones())
 
 # --- SHOP & REDEEM HANDLERS ---
 async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -129,7 +138,7 @@ async def callback_handler(update, context):
         except: pass
         return
 
-    # Routing logic for modules
+    # Routing logic
     if data == "open_shop": await q.answer(); await shop_menu(update, context); return
     if data == "open_games":
         await q.answer()
@@ -141,7 +150,7 @@ async def callback_handler(update, context):
     if data == "open_commands": await q.answer(); await help.help_callback(update, context); return
     if data == "back_home": await q.answer(); await start.start_callback(update, context); return
     
-    # Pattern matching for modules
+    # Dynamic Pattern Matching
     if data.startswith(("help_", "mod_")): await help.help_callback(update, context); return
     if data.startswith(("start_", "st_")): await start.start_callback(update, context); return
     if data.startswith("admin_"): await admin.admin_callback(update, context); return
@@ -170,7 +179,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    # 0. Protection & Enforcement
+    # 0. Protection
     if chat.type == "private":
         spam_status = dmspam.check_spam(user.id)
         if spam_status in ["BLOCKED", "NEW_BLOCK"]: return
@@ -201,7 +210,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if sticker_id: await update.message.reply_sticker(sticker_id)
         return
 
-    # 4. 🔥 AI TEXT & VOICE LOGIC (Optimized)
+    # 4. 🔥 AI TEXT & VOICE LOGIC
     text = update.message.text
     if not text: return
 
@@ -216,8 +225,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         
-        # 🔥 FIX: Run Blocking AI in Executor (Background Thread)
-        # Isse bot lag nahi karega jab tak AI soch raha hai
         loop = asyncio.get_running_loop()
         try:
             ai_reply = await loop.run_in_executor(None, get_yuki_response, user.id, text, user.first_name)
@@ -310,10 +317,10 @@ def main():
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]kick$'), grouptools.kick_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]pin$'), grouptools.pin_message))
     
-    # Auto-Load New Tools (string.py, user_ai.py, etc.)
+    # Auto-Load New Tools (including clone.py if in tools/)
     load_plugins(app)
 
-    # Main Message Handler (Last)
+    # Main Message Handler
     app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
     
     print(f"🚀 {BOT_NAME} STARTED SUCCESSFULLY!")
@@ -321,4 +328,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
+    
